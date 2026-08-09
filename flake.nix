@@ -23,6 +23,7 @@
         ghc = hsPkgs.ghcWithPackages (ps: [
           ps.process
           ps.extra
+          ps.hspec
         ]);
 
         runtimeDeps = [
@@ -75,12 +76,18 @@
 
         checks = {
           lint = pkgs.runCommand "hlint" { nativeBuildInputs = [ hsPkgs.hlint ]; } ''
-            hlint ${self}/Main.hs
+            hlint ${self}/*.hs
             touch $out
           '';
 
           format = pkgs.runCommand "fourmolu" { nativeBuildInputs = [ hsPkgs.fourmolu ]; } ''
-            fourmolu --mode check ${self}/Main.hs
+            fourmolu --mode check ${self}/*.hs
+            touch $out
+          '';
+
+          test = pkgs.runCommand "test" { nativeBuildInputs = [ ghc pkgs.git ]; } ''
+            export HOME=$TMPDIR
+            runghc -i${self} ${self}/Test.hs
             touch $out
           '';
         };
