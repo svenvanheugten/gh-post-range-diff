@@ -1,0 +1,14 @@
+cabal-version:      3.0
+name:               gh-post-range-diff
+version:            0.1.0
+synopsis:           Post `git range-diff` on a PR after a force-push
+build-type:         Simple
+
+executable gh-post-range-diff
+    main-is:          Main.hs
+    default-language: GHC2021
+    ghc-options:      -O2 -Wall
+    build-depends:
+        base,
+        process,
+        extra,
