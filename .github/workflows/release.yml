@@ -44,4 +44,4 @@ jobs:
     needs: upload
     runs-on: ubuntu-latest
     steps:
-      - run: gh release edit "$GITHUB_REF_NAME" --draft=false
+      - run: gh release edit "$GITHUB_REF_NAME" --draft=false -R "$GITHUB_REPOSITORY"
