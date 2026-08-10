@@ -1,0 +1,27 @@
+name: Post range-diff
+description: Comment a git range-diff on a pull request whenever it is pushed to.
+branding:
+  icon: git-pull-request
+  color: purple
+inputs:
+  github-token:
+    description: Token used to read the PR timeline and post the comment. Needs pull-requests:write.
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        # Install the extension version that matches this action's ref, so a
+        # workflow pinned to @v1 (or a SHA) runs exactly that version.
+        gh extension install "${{ github.action_repository }}" \
+          --pin "${{ github.action_ref }}" --force
+        gh post-range-diff \
+          "${{ github.event.pull_request.number }}" \
+          "${{ github.event.before }}" \
+          "${{ github.event.after }}"
