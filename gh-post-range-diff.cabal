@@ -2,6 +2,9 @@ cabal-version:      3.0
 name:               gh-post-range-diff
 version:            0.1.0
 synopsis:           Post `git range-diff` on a PR after a force-push
+license:            MIT
+license-file:       LICENSE
+author:             Sven van Heugten
 build-type:         Simple
 
 executable gh-post-range-diff
