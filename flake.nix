@@ -53,7 +53,7 @@
 
         packages.default = pkgs.stdenv.mkDerivation {
           pname = "gh-post-range-diff";
-          version = "0.4.1";
+          version = "0.4.2";
           src = self;
           meta.mainProgram = "gh-post-range-diff";
 
