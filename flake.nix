@@ -85,11 +85,19 @@
             touch $out
           '';
 
-          test = pkgs.runCommand "test" { nativeBuildInputs = [ ghc pkgs.git ]; } ''
-            export HOME=$TMPDIR
-            runghc -i${self} ${self}/Test.hs
-            touch $out
-          '';
+          test =
+            pkgs.runCommand "test"
+              {
+                nativeBuildInputs = [
+                  ghc
+                  pkgs.git
+                ];
+              }
+              ''
+                export HOME=$TMPDIR
+                runghc -i${self} ${self}/Test.hs
+                touch $out
+              '';
         };
       }
     );
