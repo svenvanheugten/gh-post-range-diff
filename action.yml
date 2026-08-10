@@ -16,11 +16,16 @@ runs:
     - shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        # These contexts are empty when read directly in a composite action's
+        # run script, so pass them through env, where they resolve correctly.
+        # https://github.com/actions/runner/issues/2473
+        ACTION_REPOSITORY: ${{ github.action_repository }}
+        ACTION_REF: ${{ github.action_ref }}
       run: |
         # Install the extension version that matches this action's ref, so a
         # workflow pinned to @v1 (or a SHA) runs exactly that version.
-        gh extension install "${{ github.action_repository }}" \
-          --pin "${{ github.action_ref }}" --force
+        gh extension install "$ACTION_REPOSITORY" \
+          --pin "$ACTION_REF" --force
         gh post-range-diff \
           "${{ github.event.pull_request.number }}" \
           "${{ github.event.before }}" \
