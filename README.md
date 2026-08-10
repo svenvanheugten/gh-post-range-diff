@@ -29,7 +29,7 @@ jobs:
   range-diff:
     runs-on: ubuntu-latest
     steps:
-      - uses: svenvanheugten/gh-post-range-diff@v0.2.0
+      - uses: svenvanheugten/gh-post-range-diff@v0.3.0
 ```
 
 ## Manual use
