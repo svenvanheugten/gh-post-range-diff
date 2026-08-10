@@ -6,9 +6,23 @@ build-type:         Simple
 
 executable gh-post-range-diff
     main-is:          Main.hs
+    other-modules:    RangeDiffRenderer
     default-language: GHC2021
     ghc-options:      -O2 -Wall
     build-depends:
         base,
         process,
         extra,
+
+-- Builds real git repos, so it needs `git` on PATH at run time.
+test-suite range-diff-renderer
+    type:             exitcode-stdio-1.0
+    main-is:          Test.hs
+    other-modules:    RangeDiffRenderer
+    default-language: GHC2021
+    ghc-options:      -Wall
+    build-depends:
+        base,
+        process,
+        extra,
+        hspec,

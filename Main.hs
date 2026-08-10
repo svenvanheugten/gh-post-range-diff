@@ -6,6 +6,7 @@ module Main where
 import Control.Monad.Extra (findM)
 import Data.List (isInfixOf, nub, unsnoc)
 import Data.List.Extra (trim)
+import RangeDiffRenderer (format)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..))
 import System.Process (callProcess, readProcess, readProcessWithExitCode)
@@ -122,11 +123,12 @@ main = do
                     b2 <- baseFor newBaseTip newHead cands
                     diff <- sh "git" ["range-diff", b1 ++ ".." ++ oldHead, b2 ++ ".." ++ newHead]
 
+                    let header = "### Range-diff for force push " ++ take 7 oldHead ++ " → " ++ take 7 newHead
                     callProcess
                         "gh"
                         [ "pr"
                         , "comment"
                         , pr
                         , "--body"
-                        , marker ++ "\n<details><summary>Range-diff <code>" ++ take 7 oldHead ++ "</code> → <code>" ++ take 7 newHead ++ "</code></summary>\n\n```\n" ++ diff ++ "```\n\n</details>"
+                        , marker ++ "\n" ++ header ++ "\n\n" ++ format diff
                         ]
