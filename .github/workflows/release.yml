@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME"
+      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --draft
 
   upload:
     needs: create-release
@@ -25,7 +25,7 @@ jobs:
         include:
           - { runner: ubuntu-latest,    os: linux,   arch: amd64 }
           - { runner: ubuntu-24.04-arm, os: linux,   arch: arm64 }
-          - { runner: macos-13,         os: darwin,  arch: amd64 }
+          - { runner: macos-15-intel,   os: darwin,  arch: amd64 }
           - { runner: macos-latest,     os: darwin,  arch: arm64 }
           - { runner: windows-latest,   os: windows, arch: amd64, ext: .exe }
     runs-on: ${{ matrix.runner }}
@@ -46,3 +46,9 @@ jobs:
           asset="gh-post-range-diff_${GITHUB_REF_NAME}_${{ matrix.os }}-${{ matrix.arch }}${{ matrix.ext }}"
           cp "$(cabal list-bin gh-post-range-diff)" "$asset"
           gh release upload "$GITHUB_REF_NAME" "$asset"
+
+  publish:
+    needs: upload
+    runs-on: ubuntu-latest
+    steps:
+      - run: gh release edit "$GITHUB_REF_NAME" --draft=false
