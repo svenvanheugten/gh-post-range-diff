@@ -8,19 +8,8 @@ permissions:
   contents: read
   pull-requests: write
 
-env:
-  GH_TOKEN: ${{ github.token }}
-
 jobs:
   range-diff:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: cachix/install-nix-action@v31
-      - run: |
-          nix run . -- \
-            "${{ github.event.pull_request.number }}" \
-            "${{ github.event.before }}" \
-            "${{ github.event.after }}"
+      - uses: svenvanheugten/gh-post-range-diff@v0.4.2
