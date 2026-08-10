@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The GitHub Action now verifies that the release is immutable before installing it (https://github.com/svenvanheugten/gh-post-range-diff/pull/25)
+- Support for shallow clones (https://github.com/svenvanheugten/gh-post-range-diff/pull/26)
+
+### Changed
+
+- The GitHub Action now does a shallow clone, which greatly increases performance on large repositories (https://github.com/svenvanheugten/gh-post-range-diff/pull/26)
 
 ### Fixed
 

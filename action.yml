@@ -12,7 +12,7 @@ runs:
   steps:
     - uses: actions/checkout@v7
       with:
-        fetch-depth: 0
+        fetch-depth: 1
 
     # The version this action installs.
     - name: Resolve the version to install
