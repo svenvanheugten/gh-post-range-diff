@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - run: gh release create "$GITHUB_REF_NAME"
+      - run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME"
 
   upload:
     needs: create-release
