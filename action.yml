@@ -13,19 +13,31 @@ runs:
     - uses: actions/checkout@v7
       with:
         fetch-depth: 0
-    - shell: bash
+
+    # The version this action installs.
+    - name: Resolve the version to install
+      shell: bash
+      run: echo "VERSION=v0.4.2" >> "$GITHUB_ENV"
+
+    # We unfortunately can't pin the version to a specific SHA, since `gh extension install`
+    # doesn't accept commit SHA's for binary extensions: https://github.com/cli/cli/issues/10837.
+    #
+    # We'll do the next best thing, and verify that the release is immutable instead:
+    # https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/verifying-the-integrity-of-a-release#verifying-immutable-releases-and-local-artifacts
+    - name: Verify release is immutable
+      shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
-        # These contexts are empty when read directly in a composite action's
-        # run script, so pass them through env, where they resolve correctly.
-        # https://github.com/actions/runner/issues/2473
-        ACTION_REPOSITORY: ${{ github.action_repository }}
-        ACTION_REF: ${{ github.action_ref }}
+      run: gh release verify "$VERSION" --repo "svenvanheugten/gh-post-range-diff"
+
+    # Install exactly the verified version and run it.
+    - name: Install and run
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
       run: |
-        # Install the extension version that matches this action's ref, so a
-        # workflow pinned to @v1 (or a SHA) runs exactly that version.
-        gh extension install "$ACTION_REPOSITORY" \
-          --pin "$ACTION_REF" --force
+        gh extension install "svenvanheugten/gh-post-range-diff" \
+          --pin "$VERSION" --force
         gh post-range-diff \
           "${{ github.event.pull_request.number }}" \
           "${{ github.event.before }}" \
