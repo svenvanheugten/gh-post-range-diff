@@ -3,16 +3,12 @@
 
 module Main where
 
-import Control.Monad.Extra (findM)
 import Data.List (isInfixOf, nub, unsnoc)
 import Data.List.Extra (trim)
+import Git (baseFor, sh, unshallowRange)
 import RangeDiffRenderer (format)
 import System.Environment (getArgs)
-import System.Exit (ExitCode (..))
-import System.Process (callProcess, readProcess, readProcessWithExitCode)
-
-sh :: String -> [String] -> IO String
-sh cmd args = readProcess cmd args ""
+import System.Process (callProcess)
 
 -- One timeline event: type, before-oid, after-oid.
 data Ev = Ev {evType, evBefore, evAfter :: String}
@@ -42,24 +38,6 @@ query =
       }
     }
     """
-
-isAncestor :: String -> String -> IO Bool
-isAncestor a b = do
-    (code, _, _) <- readProcessWithExitCode "git" ["merge-base", "--is-ancestor", a, b] ""
-    pure (code == ExitSuccess)
-
--- The base for `head`: the most recently recorded base tip that is still an
--- ancestor of it. `cands` needs to be in chronological order (current tip last).
---
--- If none is an ancestor (e.g. the base advanced through ordinary pushes, which
--- emits no force-push events) fall back to the merge-base with the current base
--- tip: the point where `head` forked from today's base line.
-baseFor :: String -> String -> [String] -> IO String
-baseFor currentBase head cands = do
-    found <- findM (`isAncestor` head) (reverse cands)
-    case found of
-        Just b -> pure b
-        Nothing -> trim <$> sh "git" ["merge-base", currentBase, head]
 
 -- The repository the `gh` CLI is pointed at, as (owner, name).
 ownerRepo :: IO (String, String)
@@ -116,6 +94,7 @@ run pr oldHead newHead = do
             -- this same fetch also fills with the heads and every base oid, so we
             -- couldn't pick the base tip back out to rev-parse on the next line.
             callProcess "git" $ ["fetch", "--quiet", "origin", base ++ ":refs/rd/base", oldHead, newHead] ++ baseOids
+            unshallowRange base oldHead newHead baseOids
             newBaseTip <- trim <$> sh "git" ["rev-parse", "refs/rd/base"]
             let cands = baseOids ++ [newBaseTip] -- current tip is newest, so it goes last
             b1 <- baseFor newBaseTip oldHead cands
