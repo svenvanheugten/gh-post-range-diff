@@ -232,24 +232,22 @@ main = hspec $ do
 
     describe "Git.unshallowRange" $ do
         -- Every shape must reconstruct from a --depth=1 clone byte-for-byte like a
-        -- full clone. Ordinary shapes must also stay shallow: the fast path only
-        -- ever pulls the pushed commits, never the whole history. The one exception
-        -- is a head stranded below the merge-base by a base-ref force-push, which
-        -- unshallowRange handles by --unshallow-ing that head (expectShallow False).
-        let reconstructsLikeFull expectShallow build = do
+        -- full clone, and must stay shallow: the deepening only ever pulls the
+        -- pushed commits, never the whole history.
+        let reconstructsShallowLikeFull build = do
                 repo <- build
                 full <- cloneAt [] (origin repo)
                 shallow <- cloneAt ["--depth=1"] (origin repo)
                 fullOut <- reconstruct full repo
                 shallowOut <- reconstruct shallow repo
                 shallowOut `shouldBe` fullOut
-                isShallow shallow `shouldReturn` expectShallow
+                isShallow shallow `shouldReturn` True
 
-        it "reconstructs a head-only force-push and stays shallow" $
-            reconstructsLikeFull True buildHeadForcePush
+        it "reconstructs a head-only force-push" $
+            reconstructsShallowLikeFull buildHeadForcePush
 
-        it "reconstructs a PR whose base advanced through ordinary pushes and stays shallow" $
-            reconstructsLikeFull True buildBaseAdvanced
+        it "reconstructs a PR whose base advanced through ordinary pushes" $
+            reconstructsShallowLikeFull buildBaseAdvanced
 
-        it "reconstructs a base-ref force-push with the old head on a deeper base, unshallowing" $
-            reconstructsLikeFull False buildBaseForcePush
+        it "reconstructs a base-ref force-push with the old head on a deeper base" $
+            reconstructsShallowLikeFull buildBaseForcePush
