@@ -2,10 +2,29 @@ cabal-version:      3.0
 name:               gh-post-range-diff
 version:            0.4.2
 synopsis:           Post `git range-diff` on a PR after a force-push
+description:
+    A GitHub Action, and a CLI, that comments on a pull request with the
+    `git range-diff` of a force-push, so reviewers can see what changed
+    between the old and the new version of the branch.
+
+homepage:           https://github.com/svenvanheugten/gh-post-range-diff
+bug-reports:        https://github.com/svenvanheugten/gh-post-range-diff/issues
 license:            MIT
 license-file:       LICENSE
 author:             Sven van Heugten
+maintainer:         sven@memcmp.org
+copyright:          (c) 2026 Sven van Heugten
+category:           Development
 build-type:         Simple
+tested-with:        GHC == 9.12.*
+
+extra-doc-files:
+    README.md
+    CHANGELOG.md
+
+source-repository head
+    type:     git
+    location: https://github.com/svenvanheugten/gh-post-range-diff.git
 
 executable gh-post-range-diff
     main-is:          Main.hs
@@ -13,9 +32,9 @@ executable gh-post-range-diff
     default-language: GHC2021
     ghc-options:      -O2 -Wall
     build-depends:
-        base,
-        process,
-        extra,
+        base    >=4.21 && <5,
+        process >=1.6  && <1.7,
+        extra   >=1.7  && <2,
 
 -- Builds real git repos, so it needs `git` on PATH at run time.
 test-suite range-diff-renderer
@@ -25,7 +44,7 @@ test-suite range-diff-renderer
     default-language: GHC2021
     ghc-options:      -Wall
     build-depends:
-        base,
-        process,
-        extra,
-        hspec,
+        base    >=4.21 && <5,
+        process >=1.6  && <1.7,
+        extra   >=1.7  && <2,
+        hspec   >=2.10 && <3,
