@@ -17,7 +17,8 @@ module GhPostRangeDiff.RenderSpec (spec) where
 import Data.List (intercalate)
 import Data.List.Extra (trim)
 import GhPostRangeDiff.Render (format)
-import System.Process (CreateProcess (cwd), proc, readCreateProcess, readProcess)
+import System.IO.Temp (withSystemTempDirectory)
+import System.Process (CreateProcess (cwd), proc, readCreateProcess)
 import Test.Hspec
 
 -- Status emojis, as the codepoints 'format' emits.
@@ -57,8 +58,7 @@ data Fixture = Fixture
     }
 
 buildFixture :: IO Fixture
-buildFixture = do
-    dir <- trim <$> readProcess "mktemp" ["-d"] ""
+buildFixture = withSystemTempDirectory "gh-post-range-diff" $ \dir -> do
     _ <- git dir ["init", "-q"]
     _ <- git dir ["config", "user.email", "t@t"]
     _ <- git dir ["config", "user.name", "t"]

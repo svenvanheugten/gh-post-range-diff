@@ -64,8 +64,9 @@ test-suite spec
     other-modules:    GhPostRangeDiff.RenderSpec
     build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
     build-depends:
-        base    >=4.21 && <5,
-        process >=1.6  && <1.7,
-        extra   >=1.7  && <2,
-        hspec   >=2.10 && <3,
+        base      >=4.21 && <5,
+        process   >=1.6  && <1.7,
+        extra     >=1.7  && <2,
+        hspec     >=2.10 && <3,
+        temporary >=1.3  && <1.4,
         gh-post-range-diff,
