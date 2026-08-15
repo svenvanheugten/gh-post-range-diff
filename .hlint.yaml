@@ -1,0 +1,2 @@
+# hlint doesn't read the .cabal file, so its language settings are repeated here.
+- arguments: [-XGHC2021, -XMultilineStrings]

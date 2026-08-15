@@ -16,25 +16,27 @@
       system:
       let
         pkgs = import nixpkgs { inherit system; };
+        hsLib = pkgs.haskell.lib;
 
         # MultilineStrings requires GHC >= 9.12.
         hsPkgs = pkgs.haskell.packages.ghc912;
-
-        ghc = hsPkgs.ghcWithPackages (ps: [
-          ps.process
-          ps.extra
-          ps.hspec
-        ]);
 
         runtimeDeps = [
           pkgs.git
           pkgs.gh
         ];
+
+        gh-post-range-diff = hsLib.overrideCabal (hsPkgs.callCabal2nix "gh-post-range-diff" ./. { }) (old: {
+          doCheck = true;
+          testToolDepends = (old.testToolDepends or [ ]) ++ [ pkgs.git ];
+        });
       in
       {
-        devShells.default = pkgs.mkShell {
-          packages = [
-            ghc
+        devShells.default = hsPkgs.shellFor {
+          packages = _: [ gh-post-range-diff ];
+
+          nativeBuildInputs = [
+            hsPkgs.cabal-install
             hsPkgs.haskell-language-server
             hsPkgs.hlint
             hsPkgs.fourmolu
@@ -42,7 +44,7 @@
           ++ runtimeDeps;
 
           shellHook = ''
-            echo "Run: runghc Main.hs <pr-number>"
+            echo "Run: cabal run gh-post-range-diff -- <pr-number>"
           '';
         };
 
@@ -51,53 +53,33 @@
           program = "${self.packages.${system}.default}/bin/gh-post-range-diff";
         };
 
-        packages.default = pkgs.stdenv.mkDerivation {
-          pname = "gh-post-range-diff";
-          version = "0.4.2";
-          src = self;
-          meta.mainProgram = "gh-post-range-diff";
-
-          nativeBuildInputs = [
-            ghc
-            pkgs.makeWrapper
-          ];
-
-          buildPhase = ''
-            ghc -O2 -Wall -o gh-post-range-diff Main.hs
-          '';
-
-          installPhase = ''
-            mkdir -p $out/bin
-            install -m755 gh-post-range-diff $out/bin/gh-post-range-diff
-            wrapProgram $out/bin/gh-post-range-diff \
-              --prefix PATH : ${pkgs.lib.makeBinPath runtimeDeps}
-          '';
-        };
+        packages.default =
+          pkgs.runCommand "gh-post-range-diff-${gh-post-range-diff.version}"
+            {
+              nativeBuildInputs = [ pkgs.makeWrapper ];
+              meta.mainProgram = "gh-post-range-diff";
+            }
+            ''
+              mkdir -p $out/bin
+              makeWrapper ${hsLib.justStaticExecutables gh-post-range-diff}/bin/gh-post-range-diff \
+                $out/bin/gh-post-range-diff \
+                --prefix PATH : ${pkgs.lib.makeBinPath runtimeDeps}
+            '';
 
         checks = {
+          build = gh-post-range-diff;
+
           lint = pkgs.runCommand "hlint" { nativeBuildInputs = [ hsPkgs.hlint ]; } ''
-            hlint ${self}/*.hs
+            cd ${self}
+            hlint *.hs
             touch $out
           '';
 
           format = pkgs.runCommand "fourmolu" { nativeBuildInputs = [ hsPkgs.fourmolu ]; } ''
-            fourmolu --mode check ${self}/*.hs
+            cd ${self}
+            fourmolu --mode check *.hs
             touch $out
           '';
-
-          test =
-            pkgs.runCommand "test"
-              {
-                nativeBuildInputs = [
-                  ghc
-                  pkgs.git
-                ];
-              }
-              ''
-                export HOME=$TMPDIR
-                runghc -i${self} ${self}/Test.hs
-                touch $out
-              '';
         };
       }
     );
