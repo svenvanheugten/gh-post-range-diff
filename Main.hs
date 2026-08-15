@@ -1,6 +1,3 @@
-{-# LANGUAGE MultilineStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-
 module Main where
 
 import Control.Monad.Extra (findM)

@@ -26,11 +26,17 @@ source-repository head
     type:     git
     location: https://github.com/svenvanheugten/gh-post-range-diff.git
 
+common defaults
+    default-language:   GHC2021
+    default-extensions: MultilineStrings
+    ghc-options:
+        -Wall -Wcompat -Wredundant-constraints -Wunused-packages
+
 executable gh-post-range-diff
+    import:           defaults
     main-is:          Main.hs
     other-modules:    RangeDiffRenderer
-    default-language: GHC2021
-    ghc-options:      -O2 -Wall
+    ghc-options:      -O2
     build-depends:
         base    >=4.21 && <5,
         process >=1.6  && <1.7,
@@ -38,11 +44,10 @@ executable gh-post-range-diff
 
 -- Builds real git repos, so it needs `git` on PATH at run time.
 test-suite range-diff-renderer
+    import:           defaults
     type:             exitcode-stdio-1.0
     main-is:          Test.hs
     other-modules:    RangeDiffRenderer
-    default-language: GHC2021
-    ghc-options:      -Wall
     build-depends:
         base    >=4.21 && <5,
         process >=1.6  && <1.7,
