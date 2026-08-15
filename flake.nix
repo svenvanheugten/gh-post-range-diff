@@ -71,13 +71,13 @@
 
           lint = pkgs.runCommand "hlint" { nativeBuildInputs = [ hsPkgs.hlint ]; } ''
             cd ${self}
-            hlint *.hs
+            hlint src app test
             touch $out
           '';
 
           format = pkgs.runCommand "fourmolu" { nativeBuildInputs = [ hsPkgs.fourmolu ]; } ''
             cd ${self}
-            fourmolu --mode check *.hs
+            fourmolu --mode check src app test
             touch $out
           '';
         };

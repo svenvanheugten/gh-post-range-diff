@@ -3,7 +3,7 @@ module Main where
 import Control.Monad.Extra (findM)
 import Data.List (isInfixOf, nub, unsnoc)
 import Data.List.Extra (trim)
-import RangeDiffRenderer (format)
+import GhPostRangeDiff.Render (format)
 import System.Environment (getArgs)
 import System.Exit (ExitCode (..))
 import System.Process (callProcess, readProcess, readProcessWithExitCode)

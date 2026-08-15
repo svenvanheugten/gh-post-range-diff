@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-{- | Tests for "RangeDiffRenderer".
+{- | Tests for "GhPostRangeDiff.Render".
 
 Rather than hand-write range-diff text (which would just encode our
 assumptions about its format), the fixture builds a throwaway git repo, runs
@@ -16,7 +16,7 @@ module Main where
 
 import Data.List (intercalate)
 import Data.List.Extra (trim)
-import RangeDiffRenderer (format)
+import GhPostRangeDiff.Render (format)
 import System.Process (CreateProcess (cwd), proc, readCreateProcess, readProcess)
 import Test.Hspec
 
@@ -83,7 +83,7 @@ buildFixture = do
         <*> short dir "old"
 
 main :: IO ()
-main = hspec $ describe "RangeDiffRenderer.format" $ do
+main = hspec $ describe "GhPostRangeDiff.Render.format" $ do
     Fixture{..} <- runIO buildFixture
 
     it "renders a status marker and bare sha per commit, with a changed commit's interdiff shown in-place in a fence that survives backticks in the patch" $

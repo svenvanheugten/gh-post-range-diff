@@ -4,7 +4,7 @@ The raw range-diff is a flat block of text. This renders it as a per-commit
 list with a status emoji, an auto-linked commit sha, and the interdiff of a
 changed commit shown in-place as a fenced diff block.
 -}
-module RangeDiffRenderer (format) where
+module GhPostRangeDiff.Render (format) where
 
 import Data.List (group, intercalate, unsnoc)
 

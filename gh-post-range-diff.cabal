@@ -32,24 +32,33 @@ common defaults
     ghc-options:
         -Wall -Wcompat -Wredundant-constraints -Wunused-packages
 
+library
+    import:           defaults
+    hs-source-dirs:   src
+    exposed-modules:  GhPostRangeDiff.Render
+    build-depends:
+        base    >=4.21 && <5,
+
 executable gh-post-range-diff
     import:           defaults
+    hs-source-dirs:   app
     main-is:          Main.hs
-    other-modules:    RangeDiffRenderer
     ghc-options:      -O2
     build-depends:
         base    >=4.21 && <5,
         process >=1.6  && <1.7,
         extra   >=1.7  && <2,
+        gh-post-range-diff,
 
 -- Builds real git repos, so it needs `git` on PATH at run time.
 test-suite range-diff-renderer
     import:           defaults
     type:             exitcode-stdio-1.0
+    hs-source-dirs:   test
     main-is:          Test.hs
-    other-modules:    RangeDiffRenderer
     build-depends:
         base    >=4.21 && <5,
         process >=1.6  && <1.7,
         extra   >=1.7  && <2,
         hspec   >=2.10 && <3,
+        gh-post-range-diff,
