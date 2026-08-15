@@ -35,9 +35,16 @@ common defaults
 library
     import:           defaults
     hs-source-dirs:   src
-    exposed-modules:  GhPostRangeDiff.Render
+    exposed-modules:
+        GhPostRangeDiff.Git
+        GhPostRangeDiff.GitHub
+        GhPostRangeDiff.Render
+        GhPostRangeDiff.Run
+
     build-depends:
         base    >=4.21 && <5,
+        process >=1.6  && <1.7,
+        extra   >=1.7  && <2,
 
 executable gh-post-range-diff
     import:           defaults
@@ -46,8 +53,6 @@ executable gh-post-range-diff
     ghc-options:      -O2
     build-depends:
         base    >=4.21 && <5,
-        process >=1.6  && <1.7,
-        extra   >=1.7  && <2,
         gh-post-range-diff,
 
 -- Builds real git repos, so it needs `git` on PATH at run time.
