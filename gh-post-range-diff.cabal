@@ -51,11 +51,13 @@ executable gh-post-range-diff
         gh-post-range-diff,
 
 -- Builds real git repos, so it needs `git` on PATH at run time.
-test-suite range-diff-renderer
+test-suite spec
     import:           defaults
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
-    main-is:          Test.hs
+    main-is:          Spec.hs
+    other-modules:    GhPostRangeDiff.RenderSpec
+    build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
     build-depends:
         base    >=4.21 && <5,
         process >=1.6  && <1.7,

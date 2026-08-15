@@ -12,7 +12,7 @@ through 'format'. The one scenario exercises all four markers:
   * @<@ removed
   * @>@ added
 -}
-module Main where
+module GhPostRangeDiff.RenderSpec (spec) where
 
 import Data.List (intercalate)
 import Data.List.Extra (trim)
@@ -82,8 +82,8 @@ buildFixture = do
         <*> short dir "new"
         <*> short dir "old"
 
-main :: IO ()
-main = hspec $ describe "GhPostRangeDiff.Render.format" $ do
+spec :: Spec
+spec = describe "format" $ do
     Fixture{..} <- runIO buildFixture
 
     it "renders a status marker and bare sha per commit, with a changed commit's interdiff shown in-place in a fence that survives backticks in the patch" $
