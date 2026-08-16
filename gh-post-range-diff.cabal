@@ -16,7 +16,7 @@ maintainer:         sven@memcmp.org
 copyright:          (c) 2026 Sven van Heugten
 category:           Development
 build-type:         Simple
-tested-with:        GHC == 9.12.*
+tested-with:        GHC == 9.10.*
 
 extra-doc-files:
     README.md
@@ -28,7 +28,6 @@ source-repository head
 
 common defaults
     default-language:   GHC2021
-    default-extensions: MultilineStrings
     ghc-options:
         -Wall -Wcompat -Wredundant-constraints -Wunused-packages
 
@@ -42,7 +41,7 @@ library
         GhPostRangeDiff.Run
 
     build-depends:
-        base    >=4.21 && <5,
+        base    >=4.20 && <5,
         process >=1.6  && <1.7,
         extra   >=1.7  && <2,
 
@@ -52,7 +51,7 @@ executable gh-post-range-diff
     main-is:          Main.hs
     ghc-options:      -O2
     build-depends:
-        base    >=4.21 && <5,
+        base    >=4.20 && <5,
         gh-post-range-diff,
 
 -- Builds real git repos, so it needs `git` on PATH at run time.
@@ -64,7 +63,7 @@ test-suite spec
     other-modules:    GhPostRangeDiff.RenderSpec
     build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
     build-depends:
-        base      >=4.21 && <5,
+        base      >=4.20 && <5,
         process   >=1.6  && <1.7,
         extra     >=1.7  && <2,
         hspec     >=2.10 && <3,

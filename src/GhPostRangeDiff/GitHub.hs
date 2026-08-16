@@ -21,24 +21,24 @@ parse l = case words l of
 
 query :: String
 query =
-    """
-    query($o: String!, $r: String!, $n: Int!) {
-      repository(owner: $o, name: $r) {
-        pullRequest(number: $n) {
-          timelineItems(
-            last: 250
-            itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, BASE_REF_FORCE_PUSHED_EVENT]
-          ) {
-            nodes {
-              __typename
-              ... on HeadRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } }
-              ... on BaseRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } }
-            }
-          }
-        }
-      }
-    }
-    """
+    unlines
+        [ "query($o: String!, $r: String!, $n: Int!) {"
+        , "  repository(owner: $o, name: $r) {"
+        , "    pullRequest(number: $n) {"
+        , "      timelineItems("
+        , "        last: 250"
+        , "        itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, BASE_REF_FORCE_PUSHED_EVENT]"
+        , "      ) {"
+        , "        nodes {"
+        , "          __typename"
+        , "          ... on HeadRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } }"
+        , "          ... on BaseRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } }"
+        , "        }"
+        , "      }"
+        , "    }"
+        , "  }"
+        , "}"
+        ]
 
 -- The repository the `gh` CLI is pointed at, as (owner, name).
 ownerRepo :: IO (String, String)

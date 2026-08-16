@@ -18,8 +18,7 @@
         pkgs = import nixpkgs { inherit system; };
         hsLib = pkgs.haskell.lib;
 
-        # MultilineStrings requires GHC >= 9.12.
-        hsPkgs = pkgs.haskell.packages.ghc912;
+        hsPkgs = pkgs.haskellPackages;
 
         runtimeDeps = [
           pkgs.git
