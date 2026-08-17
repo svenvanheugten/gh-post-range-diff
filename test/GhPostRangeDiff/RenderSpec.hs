@@ -1,6 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 
-{- | Tests for "RangeDiffRenderer".
+{- | Tests for "GhPostRangeDiff.Render".
 
 Rather than hand-write range-diff text (which would just encode our
 assumptions about its format), the fixture builds a throwaway git repo, runs
@@ -12,12 +12,13 @@ through 'format'. The one scenario exercises all four markers:
   * @<@ removed
   * @>@ added
 -}
-module Main where
+module GhPostRangeDiff.RenderSpec (spec) where
 
 import Data.List (intercalate)
 import Data.List.Extra (trim)
-import RangeDiffRenderer (format)
-import System.Process (CreateProcess (cwd), proc, readCreateProcess, readProcess)
+import GhPostRangeDiff.Render (format)
+import System.IO.Temp (withSystemTempDirectory)
+import System.Process (CreateProcess (cwd), proc, readCreateProcess)
 import Test.Hspec
 
 -- Status emojis, as the codepoints 'format' emits.
@@ -57,8 +58,7 @@ data Fixture = Fixture
     }
 
 buildFixture :: IO Fixture
-buildFixture = do
-    dir <- trim <$> readProcess "mktemp" ["-d"] ""
+buildFixture = withSystemTempDirectory "gh-post-range-diff" $ \dir -> do
     _ <- git dir ["init", "-q"]
     _ <- git dir ["config", "user.email", "t@t"]
     _ <- git dir ["config", "user.name", "t"]
@@ -82,8 +82,8 @@ buildFixture = do
         <*> short dir "new"
         <*> short dir "old"
 
-main :: IO ()
-main = hspec $ describe "RangeDiffRenderer.format" $ do
+spec :: Spec
+spec = describe "format" $ do
     Fixture{..} <- runIO buildFixture
 
     it "renders a status marker and bare sha per commit, with a changed commit's interdiff shown in-place in a fence that survives backticks in the patch" $
