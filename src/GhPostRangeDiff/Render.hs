@@ -23,7 +23,7 @@ The marker is one of @=@ (unchanged), @!@ (same commit, different diff),
 for a removed one the new side is. 'enBody' holds the indented interdiff lines
 git emits underneath a @!@ entry.
 -}
-data Entry = Entry {enMarker :: Char, enSha, enSubject :: String, enBody :: [String]}
+data Entry = Entry {_enMarker :: Char, _enSha, _enSubject :: String, enBody :: [String]}
 
 {- | A range-diff line is a header iff it doesn't start with whitespace; the
 interdiff body git emits under a @!@ entry is always indented.

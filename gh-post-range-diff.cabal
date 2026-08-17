@@ -29,7 +29,7 @@ source-repository head
 common defaults
     default-language:   GHC2021
     ghc-options:
-        -Wall -Wcompat -Wredundant-constraints -Wunused-packages
+        -Werror -Wall -Wcompat -Wredundant-constraints -Wunused-packages
 
 library
     import:           defaults

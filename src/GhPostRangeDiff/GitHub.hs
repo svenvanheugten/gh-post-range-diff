@@ -44,8 +44,9 @@ query =
 ownerRepo :: IO (String, String)
 ownerRepo = do
     nameWithOwner <- trim <$> sh "gh" ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]
-    let (owner, _ : repo) = break (== '/') nameWithOwner
-    pure (owner, repo)
+    case break (== '/') nameWithOwner of
+        (owner, _ : repo) -> pure (owner, repo)
+        _ -> error ("unexpected repository name: " ++ nameWithOwner)
 
 -- The PR's force-push timeline events, oldest first.
 timeline :: String -> IO [Ev]

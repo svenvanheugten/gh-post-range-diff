@@ -41,8 +41,8 @@ rangeDiff oldBase oldHead newBase newHead =
 -- emits no force-push events) fall back to the merge-base with the current base
 -- tip: the point where `head` forked from today's base line.
 baseFor :: String -> String -> [String] -> IO String
-baseFor currentBase head cands = do
-    found <- findM (`isAncestor` head) (reverse cands)
+baseFor currentBase headCommit cands = do
+    found <- findM (`isAncestor` headCommit) (reverse cands)
     case found of
         Just b -> pure b
-        Nothing -> trim <$> git ["merge-base", currentBase, head]
+        Nothing -> trim <$> git ["merge-base", currentBase, headCommit]
