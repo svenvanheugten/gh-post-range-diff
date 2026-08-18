@@ -25,7 +25,7 @@
 
         treefmtEval = treefmt-nix.lib.evalModule pkgs {
           projectRootFile = "flake.nix";
-          programs.fourmolu.enable = true;
+          programs.ormolu.enable = true;
           programs.nixfmt.enable = true;
         };
 
