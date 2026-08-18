@@ -2,9 +2,9 @@
 
 module GhPostRangeDiff.RenderSpec (spec) where
 
-import Data.Char (isPrint)
 import Data.List (isInfixOf, stripPrefix)
 import Data.Maybe (mapMaybe)
+import GhPostRangeDiff.Gen qualified as Gen
 import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), CommitSha, Interdiff (interdiffText), commitSha, interdiff, shaText)
 import GhPostRangeDiff.Render (format)
 import Test.Hspec
@@ -49,20 +49,12 @@ instance Arbitrary Change where
   shrink _ = []
 
 instance Arbitrary Commit where
-  arbitrary = Commit <$> arbitrary <*> arbitrary <*> commitMessage
-    where
-      -- A commit message: arbitrary words, with the occasional run of backticks
-      -- thrown in, which sits mid-line and so must not be read as a fence.
-      commitMessage = unwords <$> resize 3 (listOf1 word)
-      word = frequency [(4, getPrintableString <$> arbitrary), (1, pure "```")]
+  arbitrary = Commit <$> arbitrary <*> arbitrary <*> Gen.commitMessage
 
   shrink (Commit change sha message) =
     [Commit change' sha message | change' <- shrink change]
       ++ [Commit change sha' message | sha' <- shrink sha]
-      -- The 'String' shrinker can slip in a newline, which would split the
-      -- commit over two lines. Keep shrunk messages printable, like the
-      -- generated ones.
-      ++ [Commit change sha message' | message' <- shrink message, all isPrint message']
+      ++ [Commit change sha message' | message' <- Gen.shrinkCommitMessage message]
 
 data Block = PlainLineOfText String | CodeBlock String [String]
 
