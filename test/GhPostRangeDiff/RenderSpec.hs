@@ -1,49 +1,115 @@
 module GhPostRangeDiff.RenderSpec (spec) where
 
-import Data.List (intercalate)
+import Data.List (isInfixOf, stripPrefix)
 import GhPostRangeDiff.RangeDiff (Change (..), Commit (..))
 import GhPostRangeDiff.Render (format)
 import Test.Hspec
+import Test.QuickCheck
 
--- Status emojis, as the codepoints 'format' emits.
-green, red, orange, white :: String
-green = "\128994" -- 🟢 added
-red = "\128308" -- 🔴 removed
-orange = "\128992" -- 🟠 updated
-white = "\9898" -- ⚪ unchanged
+-- | An interdiff line: an arbitrary string, occasionally prefixed by a run of
+-- backticks. What the patch text says doesn't matter to rendering, but that
+-- prefix does: such a line closes a fence that wasn't sized to outlast it.
+genLine :: Gen String
+genLine = (++) <$> ticks <*> (getPrintableString <$> arbitrary)
+  where
+    ticks = frequency [(4, pure ""), (2, (`replicate` '`') <$> choose (1, 6))]
 
--- An interdiff whose changed line carries a ``` run, so the fence has to widen
--- to four backticks to stay unbreakable.
-interdiff :: [String]
-interdiff = ["@@ big.txt (new)", " +l8", "-+```OLD", "++```NEW"]
+genChange :: Gen Change
+genChange =
+  oneof
+    [ pure Added,
+      pure Removed,
+      pure Unchanged,
+      Updated <$> listOf genLine
+    ]
+
+genCommitSha :: Gen String
+genCommitSha = vectorOf 7 (elements "0123456789abcdef")
+
+-- | A commit message: arbitrary words, with the occasional run of backticks
+-- thrown in, which sits mid-line and so must not be read as a fence.
+genCommitMessage :: Gen String
+genCommitMessage = unwords <$> resize 3 (listOf1 word)
+  where
+    word = frequency [(4, getPrintableString <$> arbitrary), (1, pure "```")]
+
+genCommit :: Gen Commit
+genCommit = Commit <$> genChange <*> genCommitSha <*> genCommitMessage
+
+data Block = PlainLineOfText String | CodeBlock String [String]
+
+isBlank :: String -> Bool
+isBlank = all (`elem` " \t")
+
+-- | Check if a line counts as a fence. If it does, return the number of backticks and
+-- the text after it. CommonMark allows up to three spaces of indent on these lines:
+-- https://spec.commonmark.org/0.31.2/#fenced-code-blocks
+matchFence :: Int -> String -> Maybe (Int, String)
+matchFence minimalNumberOfBackticks l
+  | length indent <= 3, length ticks >= minimalNumberOfBackticks = Just (length ticks, rest)
+  | otherwise = Nothing
+  where
+    (indent, l') = span (== ' ') l
+    (ticks, rest) = span (== '`') l'
+
+-- | Split Markdown into blocks.
+blocks :: [String] -> Either String [Block]
+blocks [] = Right []
+blocks (l : ls)
+  | isBlank l = blocks ls
+  | Just (n, language) <- matchFence 3 l,
+    '`' `notElem` language =
+      case break (closes n) ls of
+        (body, _ : rest) -> (CodeBlock language body :) <$> blocks rest
+        (_, []) -> Left ("unterminated code fence: " ++ show l)
+  | otherwise = (PlainLineOfText l :) <$> blocks ls
+  where
+    -- A fence closes on the first line whose own run is at least as long,
+    -- followed by nothing but spaces or tabs.
+    closes n = maybe False (isBlank . snd) . matchFence n
+
+parseTag :: String -> Either String (Change, String)
+parseTag l
+  | Just r <- tag "\128994 **Added**" = Right (Added, r)
+  | Just r <- tag "\128308 **Removed**" = Right (Removed, r)
+  | Just r <- tag "\128992 **Updated**" = Right (Updated [], r)
+  | Just r <- tag "\9898 **Unchanged**" = Right (Unchanged, r)
+  | otherwise = Left ("not a commit line: " ++ show l)
+  where
+    tag t = stripPrefix (t ++ " ") l
+
+parseHeader :: String -> Either String Commit
+parseHeader l = do
+  (change, rest) <- parseTag l
+  case break (== ' ') rest of
+    (sha, ' ' : commitMessage) -> Right (Commit change sha commitMessage)
+    _ -> Left ("commit line has no commit message: " ++ show l)
+
+toCommits :: [Block] -> Either String [Commit]
+toCommits [] = Right []
+toCommits (PlainLineOfText l : bs) = do
+  commit <- parseHeader l
+  case (commit, bs) of
+    -- A fenced diff belongs to the updated commit right above it.
+    (Commit (Updated []) sha subject, CodeBlock "diff" body : bs') ->
+      (Commit (Updated body) sha subject :) <$> toCommits bs'
+    _ -> (commit :) <$> toCommits bs
+toCommits (CodeBlock info _ : _) = Left ("stray code block: " ++ show info)
+
+-- | Read 'format' output back into the commits it was rendered from.
+reparse :: String -> Either String [Commit]
+reparse s = blocks (lines s) >>= toCommits
+
+-- | Whether a three-backtick fence would have been closed by the interdiff
+-- itself, so that 'format' had to widen it. The case worth covering.
+widened :: Commit -> Bool
+widened (Commit (Updated body) _ _) = any (isInfixOf "```") body
+widened _ = False
 
 spec :: Spec
-spec = describe "format" $ do
-  it "renders a status marker and a bare sha per commit, blank-line separated" $
-    format
-      [ Commit Unchanged "1111111" "add keep",
-        Commit Removed "2222222" "add gone",
-        Commit Added "3333333" "add fresh"
-      ]
-      `shouldBe` intercalate
-        "\n"
-        [ white ++ " **Unchanged** 1111111 add keep",
-          "",
-          red ++ " **Removed** 2222222 add gone",
-          "",
-          green ++ " **Added** 3333333 add fresh"
-        ]
-
-  it "shows a changed commit's interdiff in-place, in a fence that survives backticks in the patch" $
-    format [Commit (Updated interdiff) "4444444" "big feature"]
-      `shouldBe` intercalate
-        "\n"
-        [ orange ++ " **Updated** 4444444 big feature",
-          "",
-          "````diff",
-          "@@ big.txt (new)",
-          " +l8",
-          "-+```OLD",
-          "++```NEW",
-          "````"
-        ]
+spec = describe "format" $
+  it "renders commits that can losslessly be converted back" $
+    checkCoverage $
+      forAll (resize 8 (listOf genCommit)) $ \commits ->
+        cover 10 (any widened commits) "widened fence" $
+          reparse (format commits) === Right commits
