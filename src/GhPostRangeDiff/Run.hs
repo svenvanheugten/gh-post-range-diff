@@ -4,6 +4,7 @@ module GhPostRangeDiff.Run (run, manual) where
 import Data.List (isInfixOf, nub, unsnoc)
 import GhPostRangeDiff.Git (baseFor, fetch, rangeDiff, revParse)
 import GhPostRangeDiff.GitHub (Ev (..), baseRef, comments, postComment, timeline)
+import GhPostRangeDiff.RangeDiff (parse)
 import GhPostRangeDiff.Render (format)
 
 -- Report on the push oldHead..newHead: post its range-diff as a PR comment.
@@ -38,7 +39,7 @@ run pr oldHead newHead = do
       diff <- rangeDiff b1 oldHead b2 newHead
 
       let header = "### Range-diff for push " ++ take 7 oldHead ++ " → " ++ take 7 newHead
-      postComment pr (marker ++ "\n" ++ header ++ "\n\n" ++ format diff)
+      postComment pr (marker ++ "\n" ++ header ++ "\n\n" ++ format (parse diff))
 
 -- Manual use: no SHAs on the command line, so derive them from the most recent
 -- force-push in the timeline and hand off to `run`.

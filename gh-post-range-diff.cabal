@@ -37,6 +37,7 @@ library
     exposed-modules:
         GhPostRangeDiff.Git
         GhPostRangeDiff.GitHub
+        GhPostRangeDiff.RangeDiff
         GhPostRangeDiff.Render
         GhPostRangeDiff.Run
 
@@ -60,7 +61,9 @@ test-suite spec
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:          Spec.hs
-    other-modules:    GhPostRangeDiff.RenderSpec
+    other-modules:
+        GhPostRangeDiff.RangeDiffSpec
+        GhPostRangeDiff.RenderSpec
     build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
     build-depends:
         base      >=4.20 && <5,
