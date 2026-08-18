@@ -1,6 +1,8 @@
--- | Parse `git range-diff` output into values, so rendering doesn't have to
--- work with the text.
-module GhPostRangeDiff.RangeDiff (Change (..), Commit (..), parse) where
+-- | Run `git range-diff` and parse its output into values, so rendering
+-- doesn't have to work with the text.
+module GhPostRangeDiff.RangeDiff (Change (..), Commit (..), rangeDiff) where
+
+import GhPostRangeDiff.Git qualified as Git
 
 -- | What happened to one commit between the old and the new range.
 data Change
@@ -63,3 +65,9 @@ mkCommit l body = case words l of
 -- | Parse `git range-diff` output, one 'Commit' per header line.
 parse :: String -> [Commit]
 parse = map (uncurry mkCommit) . chunks . lines
+
+-- | Line up @oldBase..oldHead@ against @newBase..newHead@: one 'Commit' per
+-- commit in either range, saying what happened to it.
+rangeDiff :: String -> String -> String -> String -> IO [Commit]
+rangeDiff oldBase oldHead newBase newHead =
+  parse <$> Git.rangeDiff oldBase oldHead newBase newHead
