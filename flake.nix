@@ -4,6 +4,8 @@
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-26.05";
     flake-utils.url = "github:numtide/flake-utils";
+    treefmt-nix.url = "github:numtide/treefmt-nix";
+    treefmt-nix.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   outputs =
@@ -11,6 +13,7 @@
       self,
       nixpkgs,
       flake-utils,
+      treefmt-nix,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
@@ -19,6 +22,12 @@
         hsLib = pkgs.haskell.lib;
 
         hsPkgs = pkgs.haskellPackages;
+
+        treefmtEval = treefmt-nix.lib.evalModule pkgs {
+          projectRootFile = "flake.nix";
+          programs.ormolu.enable = true;
+          programs.nixfmt.enable = true;
+        };
 
         runtimeDeps = [
           pkgs.git
@@ -38,14 +47,17 @@
             hsPkgs.cabal-install
             hsPkgs.haskell-language-server
             hsPkgs.hlint
-            hsPkgs.fourmolu
+            treefmtEval.config.build.wrapper
           ]
           ++ runtimeDeps;
 
           shellHook = ''
-            echo "Run: cabal run gh-post-range-diff -- <pr-number>"
+            echo "Run:    cabal run gh-post-range-diff -- <pr-number>"
+            echo "Format: nix fmt"
           '';
         };
+
+        formatter = treefmtEval.config.build.wrapper;
 
         apps.default = {
           type = "app";
@@ -74,11 +86,7 @@
             touch $out
           '';
 
-          format = pkgs.runCommand "fourmolu" { nativeBuildInputs = [ hsPkgs.fourmolu ]; } ''
-            cd ${self}
-            fourmolu --mode check src app test
-            touch $out
-          '';
+          format = treefmtEval.config.build.check self;
         };
       }
     );

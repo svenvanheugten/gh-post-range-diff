@@ -1,11 +1,12 @@
 -- | The `gh` invocations the tool needs, and the timeline parsing on top of them.
-module GhPostRangeDiff.GitHub (
-    Ev (..),
+module GhPostRangeDiff.GitHub
+  ( Ev (..),
     timeline,
     baseRef,
     comments,
     postComment,
-) where
+  )
+where
 
 import Data.List.Extra (trim)
 import GhPostRangeDiff.Git (sh)
@@ -16,60 +17,60 @@ data Ev = Ev {evType, evBefore, evAfter :: String}
 
 parse :: String -> Ev
 parse l = case words l of
-    (t : b : c : _) -> Ev t b c
-    _ -> error ("unexpected timeline line: " ++ l)
+  (t : b : c : _) -> Ev t b c
+  _ -> error ("unexpected timeline line: " ++ l)
 
 query :: String
 query =
-    unlines
-        [ "query($o: String!, $r: String!, $n: Int!) {"
-        , "  repository(owner: $o, name: $r) {"
-        , "    pullRequest(number: $n) {"
-        , "      timelineItems("
-        , "        last: 250"
-        , "        itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, BASE_REF_FORCE_PUSHED_EVENT]"
-        , "      ) {"
-        , "        nodes {"
-        , "          __typename"
-        , "          ... on HeadRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } }"
-        , "          ... on BaseRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } }"
-        , "        }"
-        , "      }"
-        , "    }"
-        , "  }"
-        , "}"
-        ]
+  unlines
+    [ "query($o: String!, $r: String!, $n: Int!) {",
+      "  repository(owner: $o, name: $r) {",
+      "    pullRequest(number: $n) {",
+      "      timelineItems(",
+      "        last: 250",
+      "        itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT, BASE_REF_FORCE_PUSHED_EVENT]",
+      "      ) {",
+      "        nodes {",
+      "          __typename",
+      "          ... on HeadRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } }",
+      "          ... on BaseRefForcePushedEvent { beforeCommit { oid } afterCommit { oid } }",
+      "        }",
+      "      }",
+      "    }",
+      "  }",
+      "}"
+    ]
 
 -- The repository the `gh` CLI is pointed at, as (owner, name).
 ownerRepo :: IO (String, String)
 ownerRepo = do
-    nameWithOwner <- trim <$> sh "gh" ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]
-    case break (== '/') nameWithOwner of
-        (owner, _ : repo) -> pure (owner, repo)
-        _ -> error ("unexpected repository name: " ++ nameWithOwner)
+  nameWithOwner <- trim <$> sh "gh" ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]
+  case break (== '/') nameWithOwner of
+    (owner, _ : repo) -> pure (owner, repo)
+    _ -> error ("unexpected repository name: " ++ nameWithOwner)
 
 -- The PR's force-push timeline events, oldest first.
 timeline :: String -> IO [Ev]
 timeline pr = do
-    (owner, repo) <- ownerRepo
-    raw <-
-        sh
-            "gh"
-            [ "api"
-            , "graphql"
-            , "-f"
-            , "query=" ++ query
-            , "-F"
-            , "o=" ++ owner
-            , "-F"
-            , "r=" ++ repo
-            , "-F"
-            , "n=" ++ pr
-            , "--jq"
-            , ".data.repository.pullRequest.timelineItems.nodes[]"
-                ++ " | \"\\(.__typename) \\(.beforeCommit.oid) \\(.afterCommit.oid)\""
-            ]
-    pure (map parse (lines raw))
+  (owner, repo) <- ownerRepo
+  raw <-
+    sh
+      "gh"
+      [ "api",
+        "graphql",
+        "-f",
+        "query=" ++ query,
+        "-F",
+        "o=" ++ owner,
+        "-F",
+        "r=" ++ repo,
+        "-F",
+        "n=" ++ pr,
+        "--jq",
+        ".data.repository.pullRequest.timelineItems.nodes[]"
+          ++ " | \"\\(.__typename) \\(.beforeCommit.oid) \\(.afterCommit.oid)\""
+      ]
+  pure (map parse (lines raw))
 
 -- The branch the PR is targeting.
 baseRef :: String -> IO String

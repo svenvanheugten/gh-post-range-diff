@@ -1,12 +1,13 @@
 -- | The `git` invocations the tool needs, and the base reconstruction on top of them.
-module GhPostRangeDiff.Git (
-    sh,
+module GhPostRangeDiff.Git
+  ( sh,
     isAncestor,
     baseFor,
     fetch,
     revParse,
     rangeDiff,
-) where
+  )
+where
 
 import Control.Monad.Extra (findM)
 import Data.List.Extra (trim)
@@ -21,8 +22,8 @@ git = sh "git"
 
 isAncestor :: String -> String -> IO Bool
 isAncestor a b = do
-    (code, _, _) <- readProcessWithExitCode "git" ["merge-base", "--is-ancestor", a, b] ""
-    pure (code == ExitSuccess)
+  (code, _, _) <- readProcessWithExitCode "git" ["merge-base", "--is-ancestor", a, b] ""
+  pure (code == ExitSuccess)
 
 revParse :: String -> IO String
 revParse rev = trim <$> git ["rev-parse", rev]
@@ -32,7 +33,7 @@ fetch refs = callProcess "git" (["fetch", "--quiet", "origin"] ++ refs)
 
 rangeDiff :: String -> String -> String -> String -> IO String
 rangeDiff oldBase oldHead newBase newHead =
-    git ["range-diff", oldBase ++ ".." ++ oldHead, newBase ++ ".." ++ newHead]
+  git ["range-diff", oldBase ++ ".." ++ oldHead, newBase ++ ".." ++ newHead]
 
 -- The base for `head`: the most recently recorded base tip that is still an
 -- ancestor of it. `cands` needs to be in chronological order (current tip last).
@@ -42,7 +43,7 @@ rangeDiff oldBase oldHead newBase newHead =
 -- tip: the point where `head` forked from today's base line.
 baseFor :: String -> String -> [String] -> IO String
 baseFor currentBase headCommit cands = do
-    found <- findM (`isAncestor` headCommit) (reverse cands)
-    case found of
-        Just b -> pure b
-        Nothing -> trim <$> git ["merge-base", currentBase, headCommit]
+  found <- findM (`isAncestor` headCommit) (reverse cands)
+  case found of
+    Just b -> pure b
+    Nothing -> trim <$> git ["merge-base", currentBase, headCommit]
