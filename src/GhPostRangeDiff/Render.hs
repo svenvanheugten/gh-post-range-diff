@@ -5,7 +5,7 @@
 -- diff block.
 module GhPostRangeDiff.Render (format) where
 
-import Data.List (group, intercalate)
+import Data.List (group, intercalate, isSuffixOf)
 import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), Interdiff (..))
 
 -- | The longest run of consecutive backticks in a string. Used to size a code
@@ -34,9 +34,17 @@ render (Commit change sha subj) =
 -- block early. An empty patch gets no block at all.
 fenced :: String -> String
 fenced "" = ""
-fenced patch = "\n\n" ++ fence ++ "diff\n" ++ patch ++ fence
+fenced patch = "\n\n" ++ fence ++ "diff\n" ++ terminated patch ++ fence
   where
     fence = replicate (max 3 (maxBacktickRun patch + 1)) '`'
+
+-- | A patch with a trailing newline, so the closing fence starts on a line of
+-- its own rather than running on from the last line of the diff. Git's output
+-- ends in a newline already, but nothing in 'Interdiff' says it must.
+terminated :: String -> String
+terminated s
+  | "\n" `isSuffixOf` s = s
+  | otherwise = s ++ "\n"
 
 -- | Render the commits as a Markdown list, one item per commit.
 format :: [Commit] -> String
