@@ -72,35 +72,41 @@ blocks (l : ls)
     -- followed by nothing but spaces or tabs.
     closes n = maybe False (isBlank . snd) . matchFence n
 
-parseTag :: String -> Either String (Change, String)
+data Tag = TagAdded | TagRemoved | TagUpdated | TagUnchanged
+
+data Header = Header Tag CommitSha String
+
+parseTag :: String -> Either String (Tag, String)
 parseTag l
-  | Just r <- tag "\128994 **Added**" = Right (Added, r)
-  | Just r <- tag "\128308 **Removed**" = Right (Removed, r)
-  | Just r <- tag "\128992 **Updated**" = Right (Updated (interdiff ""), r)
-  | Just r <- tag "\9898 **Unchanged**" = Right (Unchanged, r)
+  | Just r <- tag "\128994 **Added**" = Right (TagAdded, r)
+  | Just r <- tag "\128308 **Removed**" = Right (TagRemoved, r)
+  | Just r <- tag "\128992 **Updated**" = Right (TagUpdated, r)
+  | Just r <- tag "\9898 **Unchanged**" = Right (TagUnchanged, r)
   | otherwise = Left ("not a commit line: " ++ show l)
   where
     tag t = stripPrefix (t ++ " ") l
 
-parseHeader :: String -> Either String Commit
+parseHeader :: String -> Either String Header
 parseHeader l = do
-  (change, rest) <- parseTag l
+  (tag, rest) <- parseTag l
   case break (== ' ') rest of
     (s, ' ' : commitMessage) -> case commitSha s of
-      Just sha -> Right (Commit change sha commitMessage)
+      Just sha -> Right (Header tag sha commitMessage)
       Nothing -> Left ("commit line has no sha: " ++ show l)
     _ -> Left ("commit line has no commit message: " ++ show l)
 
 toCommits :: [Block] -> Either String [Commit]
 toCommits [] = Right []
 toCommits (PlainLineOfText l : bs) = do
-  commit <- parseHeader l
-  case (cmChange commit, bs) of
-    -- A fenced diff belongs to the updated commit right above it. The empty
-    -- interdiff from 'parseTag' is the slot it fills.
-    (Updated _, CodeBlock "diff" body : bs') ->
-      (commit {cmChange = Updated (interdiff (unlines body))} :) <$> toCommits bs'
-    _ -> (commit :) <$> toCommits bs
+  Header tag sha commitMessage <- parseHeader l
+  let (change, bs') = case (tag, bs) of
+        -- A fenced diff belongs to the updated commit right above it.
+        (TagUpdated, CodeBlock "diff" body : rest) -> (Updated (interdiff (unlines body)), rest)
+        (TagUpdated, _) -> (Updated (interdiff ""), bs)
+        (TagAdded, _) -> (Added, bs)
+        (TagRemoved, _) -> (Removed, bs)
+        (TagUnchanged, _) -> (Unchanged, bs)
+  (Commit change sha commitMessage :) <$> toCommits bs'
 toCommits (CodeBlock info _ : _) = Left ("stray code block: " ++ show info)
 
 -- | Read 'format' output back into the commits it was rendered from.
