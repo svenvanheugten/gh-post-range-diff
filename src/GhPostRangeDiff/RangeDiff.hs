@@ -1,8 +1,32 @@
 -- | Run `git range-diff` and parse its output into values, so rendering
 -- doesn't have to work with the text.
-module GhPostRangeDiff.RangeDiff (Change (..), Commit (..), Interdiff (..), rangeDiff) where
+module GhPostRangeDiff.RangeDiff
+  ( Change (..),
+    Commit (..),
+    CommitSha (shaText),
+    commitSha,
+    Interdiff (..),
+    rangeDiff,
+  )
+where
 
+import Data.Char (isDigit)
+import Data.Maybe (fromMaybe)
 import GhPostRangeDiff.Git qualified as Git
+
+-- | An abbreviated commit sha, as `git range-diff` prints it.
+newtype CommitSha = CommitSha {shaText :: String}
+  deriving (Eq, Show)
+
+-- | Read a sha, rejecting anything that isn't one. Git abbreviates to at least
+-- four hex digits and never past the full forty, and prints them in lowercase.
+commitSha :: String -> Maybe CommitSha
+commitSha s
+  | n >= 4, n <= 40, all isHex s = Just (CommitSha s)
+  | otherwise = Nothing
+  where
+    n = length s
+    isHex c = isDigit c || c `elem` ['a' .. 'f']
 
 -- | The interdiff git printed under a @!@ entry, de-indented so its own +/-
 -- sit in column 0.
@@ -23,7 +47,7 @@ data Change
 data Commit = Commit
   { cmChange :: Change,
     -- | The side that still exists: the new sha for =/!/>, the old one for <.
-    cmCommitSha :: String,
+    cmCommitSha :: CommitSha,
     cmCommitMessage :: String
   }
   deriving (Eq, Show)
@@ -56,15 +80,17 @@ stripIndent _ s = s
 mkCommit :: String -> [String] -> Commit
 mkCommit l body = case words l of
   (_ : oldSha : [m] : _ : newSha : subj) -> case m of
-    '>' -> Commit Added newSha (unwords subj)
+    '>' -> commit Added newSha subj
     -- A removed commit only exists on the old side; everything else has a
     -- new-side sha we can link to.
-    '<' -> Commit Removed oldSha (unwords subj)
-    '=' -> Commit Unchanged newSha (unwords subj)
-    '!' -> Commit (Updated (Interdiff (unlines (map (stripIndent 4) body)))) newSha (unwords subj)
+    '<' -> commit Removed oldSha subj
+    '=' -> commit Unchanged newSha subj
+    '!' -> commit (Updated (Interdiff (unlines (map (stripIndent 4) body)))) newSha subj
     _ -> bad
   _ -> bad
   where
+    -- The side we didn't pick is `-------`, so only the one we keep is read.
+    commit change sha subj = Commit change (fromMaybe bad (commitSha sha)) (unwords subj)
     bad = error ("unexpected range-diff header: " ++ l)
 
 -- | Parse `git range-diff` output, one 'Commit' per header line.

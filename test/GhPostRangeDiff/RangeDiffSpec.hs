@@ -14,7 +14,7 @@
 module GhPostRangeDiff.RangeDiffSpec (spec) where
 
 import GhPostRangeDiff.Git (revParse, sh)
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), Interdiff (..), rangeDiff)
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), CommitSha, Interdiff (..), commitSha, rangeDiff)
 import System.Directory (withCurrentDirectory)
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -32,8 +32,10 @@ commit name contents msg = do
 
 -- Seven-char abbreviation of a revision, matching what range-diff prints for a
 -- small repo.
-short :: String -> IO String
-short rev = take 7 <$> revParse rev
+short :: String -> IO CommitSha
+short rev = do
+  s <- take 7 <$> revParse rev
+  maybe (fail ("rev-parse gave a non-sha: " ++ s)) pure (commitSha s)
 
 -- A big file so a one-word change is a small fraction of the commit, which
 -- keeps range-diff pairing the two versions (marker @!@) instead of treating
@@ -45,7 +47,7 @@ big lastLine = unlines (["l" ++ show n | n <- [1 :: Int .. 8]] ++ [lastLine])
 -- pick: the new side for =/!/>, the old side for <.
 data Fixture = Fixture
   { commits :: [Commit],
-    newBig, newKeep, newFresh, oldGone :: String
+    newBig, newKeep, newFresh, oldGone :: CommitSha
   }
 
 -- 'rangeDiff' shells out to git in the current directory, so the whole fixture
