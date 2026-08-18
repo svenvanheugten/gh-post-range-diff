@@ -1,18 +1,22 @@
 module GhPostRangeDiff.RenderSpec (spec) where
 
 import Data.List (isInfixOf, stripPrefix)
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), Interdiff (..))
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), CommitSha, Interdiff (interdiffText), commitSha, interdiff)
 import GhPostRangeDiff.Render (format)
 import Test.Hspec
 import Test.QuickCheck
 
--- | An interdiff line: an arbitrary string, occasionally prefixed by a run of
--- backticks. What the patch text says doesn't matter to rendering, but that
--- prefix does: such a line closes a fence that wasn't sized to outlast it.
-genLine :: Gen String
-genLine = (++) <$> ticks <*> (getPrintableString <$> arbitrary)
+-- | An interdiff: arbitrary text, built from chunks so that newlines and runs
+-- of backticks both turn up often.
+genInterdiff :: Gen Interdiff
+genInterdiff = interdiff . concat <$> listOf chunk
   where
-    ticks = frequency [(4, pure ""), (2, (`replicate` '`') <$> choose (1, 6))]
+    chunk =
+      oneof
+        [ getPrintableString <$> arbitrary,
+          pure "\n",
+          (`replicate` '`') <$> choose (1, 6)
+        ]
 
 genChange :: Gen Change
 genChange =
@@ -20,11 +24,11 @@ genChange =
     [ pure Added,
       pure Removed,
       pure Unchanged,
-      Updated . Interdiff . unlines <$> listOf genLine
+      Updated <$> genInterdiff
     ]
 
-genCommitSha :: Gen String
-genCommitSha = vectorOf 7 (elements "0123456789abcdef")
+genCommitSha :: Gen CommitSha
+genCommitSha = vectorOf 7 (elements "0123456789abcdef") `suchThatMap` commitSha
 
 -- | A commit message: arbitrary words, with the occasional run of backticks
 -- thrown in, which sits mid-line and so must not be read as a fence.
@@ -72,7 +76,7 @@ parseTag :: String -> Either String (Change, String)
 parseTag l
   | Just r <- tag "\128994 **Added**" = Right (Added, r)
   | Just r <- tag "\128308 **Removed**" = Right (Removed, r)
-  | Just r <- tag "\128992 **Updated**" = Right (Updated (Interdiff ""), r)
+  | Just r <- tag "\128992 **Updated**" = Right (Updated (interdiff ""), r)
   | Just r <- tag "\9898 **Unchanged**" = Right (Unchanged, r)
   | otherwise = Left ("not a commit line: " ++ show l)
   where
@@ -82,18 +86,20 @@ parseHeader :: String -> Either String Commit
 parseHeader l = do
   (change, rest) <- parseTag l
   case break (== ' ') rest of
-    (sha, ' ' : commitMessage) -> Right (Commit change sha commitMessage)
+    (s, ' ' : commitMessage) -> case commitSha s of
+      Just sha -> Right (Commit change sha commitMessage)
+      Nothing -> Left ("commit line has no sha: " ++ show l)
     _ -> Left ("commit line has no commit message: " ++ show l)
 
 toCommits :: [Block] -> Either String [Commit]
 toCommits [] = Right []
 toCommits (PlainLineOfText l : bs) = do
   commit <- parseHeader l
-  case (commit, bs) of
+  case (cmChange commit, bs) of
     -- A fenced diff belongs to the updated commit right above it. The empty
     -- interdiff from 'parseTag' is the slot it fills.
-    (Commit (Updated (Interdiff "")) sha subject, CodeBlock "diff" body : bs') ->
-      (Commit (Updated (Interdiff (unlines body))) sha subject :) <$> toCommits bs'
+    (Updated _, CodeBlock "diff" body : bs') ->
+      (commit {cmChange = Updated (interdiff (unlines body))} :) <$> toCommits bs'
     _ -> (commit :) <$> toCommits bs
 toCommits (CodeBlock info _ : _) = Left ("stray code block: " ++ show info)
 
@@ -102,9 +108,9 @@ reparse :: String -> Either String [Commit]
 reparse s = blocks (lines s) >>= toCommits
 
 -- | Whether a three-backtick fence would have been closed by the interdiff
--- itself, so that 'format' had to widen it. The case worth covering.
+-- itself, so that `format` had to widen it.
 widened :: Commit -> Bool
-widened (Commit (Updated (Interdiff patch)) _ _) = "```" `isInfixOf` patch
+widened (Commit (Updated patch) _ _) = "```" `isInfixOf` interdiffText patch
 widened _ = False
 
 spec :: Spec

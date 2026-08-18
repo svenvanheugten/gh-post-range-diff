@@ -5,7 +5,8 @@ module GhPostRangeDiff.RangeDiff
     Commit (..),
     CommitSha (shaText),
     commitSha,
-    Interdiff (..),
+    Interdiff (interdiffText),
+    interdiff,
     rangeDiff,
   )
 where
@@ -29,9 +30,13 @@ commitSha s
     isHex c = isDigit c || c `elem` ['a' .. 'f']
 
 -- | The interdiff git printed under a @!@ entry, de-indented so its own +/-
--- sit in column 0.
-newtype Interdiff = Interdiff String
+-- sit in column 0. Always ends with a newline; see 'interdiff'.
+newtype Interdiff = Interdiff {interdiffText :: String}
   deriving (Eq, Show)
+
+-- | Read an interdiff, adding a newline if it doesn't end with one.
+interdiff :: String -> Interdiff
+interdiff = Interdiff . unlines . lines
 
 -- | What happened to one commit between the old and the new range.
 data Change
@@ -85,7 +90,7 @@ mkCommit l body = case words l of
     -- new-side sha we can link to.
     '<' -> commit Removed oldSha subj
     '=' -> commit Unchanged newSha subj
-    '!' -> commit (Updated (Interdiff (unlines (map (stripIndent 4) body)))) newSha subj
+    '!' -> commit (Updated (interdiff (unlines (map (stripIndent 4) body)))) newSha subj
     _ -> bad
   _ -> bad
   where
