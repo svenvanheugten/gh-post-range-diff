@@ -6,7 +6,7 @@
 module GhPostRangeDiff.Render (format) where
 
 import Data.List (group, intercalate)
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..))
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), Interdiff (..))
 
 -- | The longest run of consecutive backticks in a string. Used to size a code
 -- fence so it can't be closed early by backticks in the content.
@@ -26,12 +26,17 @@ render (Commit change sha subj) =
       Unchanged -> "\9898 **Unchanged**" -- ⚪
       -- Only a changed commit carries an interdiff worth showing.
     details = case change of
-      Updated body@(_ : _) ->
-        -- Use a fence longer than any backtick run in the patch, so a line
-        -- like ``` inside the interdiff can't close the block early.
-        let fence = replicate (max 3 (maxBacktickRun (unlines body) + 1)) '`'
-         in "\n\n" ++ fence ++ "diff\n" ++ unlines body ++ fence
+      Updated (Interdiff patch) -> fenced patch
       _ -> ""
+
+-- | Show a patch as a fenced diff block. The fence is longer than any backtick
+-- run in the patch, so a line like ``` inside the interdiff can't close the
+-- block early. An empty patch gets no block at all.
+fenced :: String -> String
+fenced "" = ""
+fenced patch = "\n\n" ++ fence ++ "diff\n" ++ patch ++ fence
+  where
+    fence = replicate (max 3 (maxBacktickRun patch + 1)) '`'
 
 -- | Render the commits as a Markdown list, one item per commit.
 format :: [Commit] -> String

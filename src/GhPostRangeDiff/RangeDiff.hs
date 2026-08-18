@@ -1,8 +1,13 @@
 -- | Run `git range-diff` and parse its output into values, so rendering
 -- doesn't have to work with the text.
-module GhPostRangeDiff.RangeDiff (Change (..), Commit (..), rangeDiff) where
+module GhPostRangeDiff.RangeDiff (Change (..), Commit (..), Interdiff (..), rangeDiff) where
 
 import GhPostRangeDiff.Git qualified as Git
+
+-- | The interdiff git printed under a @!@ entry, de-indented so its own +/-
+-- sit in column 0.
+newtype Interdiff = Interdiff String
+  deriving (Eq, Show)
 
 -- | What happened to one commit between the old and the new range.
 data Change
@@ -10,8 +15,8 @@ data Change
   | Removed
   | Unchanged
   | -- | Same commit, different diff. Carries the interdiff git printed
-    -- underneath the header, de-indented so its own +/- sit in column 0.
-    Updated [String]
+    -- underneath the header.
+    Updated Interdiff
   deriving (Eq, Show)
 
 -- | One commit, as `git range-diff` reports it.
@@ -56,7 +61,7 @@ mkCommit l body = case words l of
     -- new-side sha we can link to.
     '<' -> Commit Removed oldSha (unwords subj)
     '=' -> Commit Unchanged newSha (unwords subj)
-    '!' -> Commit (Updated (map (stripIndent 4) body)) newSha (unwords subj)
+    '!' -> Commit (Updated (Interdiff (unlines (map (stripIndent 4) body)))) newSha (unwords subj)
     _ -> bad
   _ -> bad
   where

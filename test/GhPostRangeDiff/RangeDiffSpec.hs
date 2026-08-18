@@ -14,7 +14,7 @@
 module GhPostRangeDiff.RangeDiffSpec (spec) where
 
 import GhPostRangeDiff.Git (revParse, sh)
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), rangeDiff)
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), Interdiff (..), rangeDiff)
 import System.Directory (withCurrentDirectory)
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
@@ -76,8 +76,8 @@ buildFixture = withSystemTempDirectory "gh-post-range-diff" $ \dir -> withCurren
 
 -- The interdiff git prints under the paired commit, as 'rangeDiff' should hand
 -- it back: de-indented, so its own +/- sit in column 0.
-interdiff :: [String]
-interdiff = ["@@ big.txt (new)", " +l6", " +l7", " +l8", "-+```OLD", "++```NEW"]
+interdiff :: String
+interdiff = unlines ["@@ big.txt (new)", " +l6", " +l7", " +l8", "-+```OLD", "++```NEW"]
 
 spec :: Spec
 spec = describe "rangeDiff" $ do
@@ -85,7 +85,7 @@ spec = describe "rangeDiff" $ do
 
   it "reads a change, a sha from the surviving side, and a de-indented interdiff per commit" $
     commits
-      `shouldBe` [ Commit (Updated interdiff) newBig "big feature",
+      `shouldBe` [ Commit (Updated (Interdiff interdiff)) newBig "big feature",
                    Commit Unchanged newKeep "add keep",
                    Commit Removed oldGone "add gone",
                    Commit Added newFresh "add fresh"

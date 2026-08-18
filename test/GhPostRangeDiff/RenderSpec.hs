@@ -1,7 +1,7 @@
 module GhPostRangeDiff.RenderSpec (spec) where
 
 import Data.List (isInfixOf, stripPrefix)
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..))
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), Interdiff (..))
 import GhPostRangeDiff.Render (format)
 import Test.Hspec
 import Test.QuickCheck
@@ -20,7 +20,7 @@ genChange =
     [ pure Added,
       pure Removed,
       pure Unchanged,
-      Updated <$> listOf genLine
+      Updated . Interdiff . unlines <$> listOf genLine
     ]
 
 genCommitSha :: Gen String
@@ -72,7 +72,7 @@ parseTag :: String -> Either String (Change, String)
 parseTag l
   | Just r <- tag "\128994 **Added**" = Right (Added, r)
   | Just r <- tag "\128308 **Removed**" = Right (Removed, r)
-  | Just r <- tag "\128992 **Updated**" = Right (Updated [], r)
+  | Just r <- tag "\128992 **Updated**" = Right (Updated (Interdiff ""), r)
   | Just r <- tag "\9898 **Unchanged**" = Right (Unchanged, r)
   | otherwise = Left ("not a commit line: " ++ show l)
   where
@@ -90,9 +90,10 @@ toCommits [] = Right []
 toCommits (PlainLineOfText l : bs) = do
   commit <- parseHeader l
   case (commit, bs) of
-    -- A fenced diff belongs to the updated commit right above it.
-    (Commit (Updated []) sha subject, CodeBlock "diff" body : bs') ->
-      (Commit (Updated body) sha subject :) <$> toCommits bs'
+    -- A fenced diff belongs to the updated commit right above it. The empty
+    -- interdiff from 'parseTag' is the slot it fills.
+    (Commit (Updated (Interdiff "")) sha subject, CodeBlock "diff" body : bs') ->
+      (Commit (Updated (Interdiff (unlines body))) sha subject :) <$> toCommits bs'
     _ -> (commit :) <$> toCommits bs
 toCommits (CodeBlock info _ : _) = Left ("stray code block: " ++ show info)
 
@@ -103,7 +104,7 @@ reparse s = blocks (lines s) >>= toCommits
 -- | Whether a three-backtick fence would have been closed by the interdiff
 -- itself, so that 'format' had to widen it. The case worth covering.
 widened :: Commit -> Bool
-widened (Commit (Updated body) _ _) = any (isInfixOf "```") body
+widened (Commit (Updated (Interdiff patch)) _ _) = "```" `isInfixOf` patch
 widened _ = False
 
 spec :: Spec
