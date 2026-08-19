@@ -57,11 +57,16 @@ data Commit = Commit
   }
   deriving (Eq, Show)
 
--- | A range-diff line is a header iff it doesn't start with whitespace; the
--- interdiff body git emits under a @!@ entry is always indented.
+-- | A range-diff line is a header iff it is indented by fewer than four
+-- spaces. git indents the interdiff body by exactly four, and right-aligns the
+-- commit numbers in a header to the width of the largest one — so once either
+-- range reaches ten commits, a single-digit header carries a leading space of
+-- its own. Only a range of ten thousand commits could pad one out to four.
+-- A blank line is never a header; it can only have come from the interdiff.
 isHeader :: String -> Bool
-isHeader (c : _) = c /= ' '
-isHeader _ = False
+isHeader l = case span (== ' ') l of
+  (_, "") -> False
+  (indent, _) -> length indent < 4
 
 -- | Pair each header with the body lines beneath it. Body lines before the
 -- first header (which shouldn't happen) are dropped.
