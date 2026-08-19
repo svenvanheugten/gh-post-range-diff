@@ -11,6 +11,7 @@ module GhPostRangeDiff.RangeDiff
   )
 where
 
+import Data.Bifunctor (first)
 import Data.Char (isDigit)
 import Data.Maybe (fromMaybe)
 import GhPostRangeDiff.Git qualified as Git
@@ -80,16 +81,26 @@ stripIndent :: Int -> String -> String
 stripIndent n (' ' : s) | n > 0 = stripIndent (n - 1) s
 stripIndent _ s = s
 
+-- | Split a line into its first @n@ space-separated fields and whatever
+-- follows them. That remainder loses only the single space that separated it
+-- from field @n@.
+peel :: Int -> String -> Maybe ([String], String)
+peel 0 s = Just ([], s)
+peel n s = case span (/= ' ') (dropWhile (== ' ') s) of
+  ("", _) -> Nothing
+  (f, rest) -> first (f :) <$> peel (n - 1) (drop 1 rest)
+
 -- | Read one commit from its header line, e.g.
 --
 -- > 1:  5ed838c ! 1:  f69a2d3 second commit
 --
 -- The marker is one of @=@ (unchanged), @!@ (same commit, different diff),
 -- @>@ (added), @<@ (removed). For an added commit the old side is @-  -------@;
--- for a removed one the new side is.
+-- for a removed one the new side is. Everything past the fifth field is the
+-- commit message, taken verbatim.
 mkCommit :: String -> [String] -> Commit
-mkCommit l body = case words l of
-  (_ : oldSha : [m] : _ : newSha : subj) -> case m of
+mkCommit l body = case peel 5 l of
+  Just ([_, oldSha, [m], _, newSha], subj) -> case m of
     '>' -> commit Added newSha subj
     -- A removed commit only exists on the old side; everything else has a
     -- new-side sha we can link to.
@@ -100,7 +111,7 @@ mkCommit l body = case words l of
   _ -> bad
   where
     -- The side we didn't pick is `-------`, so only the one we keep is read.
-    commit change sha subj = Commit change (fromMaybe bad (commitSha sha)) (unwords subj)
+    commit change sha = Commit change (fromMaybe bad (commitSha sha))
     bad = error ("unexpected range-diff header: " ++ l)
 
 -- | Parse `git range-diff` output, one 'Commit' per header line.

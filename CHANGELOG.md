@@ -15,3 +15,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Fix the GitHub Action not working when it is pinned by SHA digest (https://github.com/svenvanheugten/gh-post-range-diff/pull/25)
 - Fix incorrect parsing of ranges of ten or more commits (https://github.com/svenvanheugten/gh-post-range-diff/pull/38)
+- Fix consecutive spaces being collapsed to a single space in commit messages (https://github.com/svenvanheugten/gh-post-range-diff/pull/39)
