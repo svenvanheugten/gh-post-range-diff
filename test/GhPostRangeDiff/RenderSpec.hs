@@ -1,44 +1,68 @@
+{-# OPTIONS_GHC -Wno-orphans #-}
+
 module GhPostRangeDiff.RenderSpec (spec) where
 
+import Data.Char (isPrint)
 import Data.List (isInfixOf, stripPrefix)
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), CommitSha, Interdiff (interdiffText), commitSha, interdiff)
+import Data.Maybe (mapMaybe)
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), CommitSha, Interdiff (interdiffText), commitSha, interdiff, shaText)
 import GhPostRangeDiff.Render (format)
 import Test.Hspec
 import Test.QuickCheck
 
--- | An interdiff: arbitrary text, built from chunks so that newlines and runs
+-- An interdiff: arbitrary text, built from chunks so that newlines and runs
 -- of backticks both turn up often.
-genInterdiff :: Gen Interdiff
-genInterdiff = interdiff . concat <$> listOf chunk
-  where
-    chunk =
-      oneof
-        [ getPrintableString <$> arbitrary,
-          pure "\n",
-          (`replicate` '`') <$> choose (1, 6)
-        ]
+instance Arbitrary Interdiff where
+  arbitrary = interdiff . concat <$> listOf chunk
+    where
+      chunk =
+        oneof
+          [ getPrintableString <$> arbitrary,
+            pure "\n",
+            (`replicate` '`') <$> choose (1, 6)
+          ]
 
-genChange :: Gen Change
-genChange =
-  oneof
-    [ pure Added,
-      pure Removed,
-      pure Unchanged,
-      Updated <$> genInterdiff
-    ]
+  -- Shrinking the text can drop the trailing newline, which 'interdiff' then
+  -- puts straight back; dropping those candidates keeps shrinking from looping
+  -- on an unchanged value.
+  shrink x = filter (/= x) (map interdiff (shrink (interdiffText x)))
 
-genCommitSha :: Gen CommitSha
-genCommitSha = vectorOf 7 (elements "0123456789abcdef") `suchThatMap` commitSha
+instance Arbitrary CommitSha where
+  arbitrary = vectorOf 7 (elements "0123456789abcdef") `suchThatMap` commitSha
 
--- | A commit message: arbitrary words, with the occasional run of backticks
--- thrown in, which sits mid-line and so must not be read as a fence.
-genCommitMessage :: Gen String
-genCommitMessage = unwords <$> resize 3 (listOf1 word)
-  where
-    word = frequency [(4, getPrintableString <$> arbitrary), (1, pure "```")]
+  -- A shrunk sha can be too short, or no longer hex; 'commitSha' drops those.
+  shrink = mapMaybe commitSha . shrink . shaText
 
-genCommit :: Gen Commit
-genCommit = Commit <$> genChange <*> genCommitSha <*> genCommitMessage
+instance Arbitrary Change where
+  arbitrary =
+    oneof
+      [ pure Added,
+        pure Removed,
+        pure Unchanged,
+        Updated <$> arbitrary
+      ]
+
+  -- A commit that carries no interdiff is the simpler counterexample, so try
+  -- that before shrinking the interdiff itself. The other three are as small
+  -- as a change gets.
+  shrink (Updated patch) = Unchanged : map Updated (shrink patch)
+  shrink _ = []
+
+instance Arbitrary Commit where
+  arbitrary = Commit <$> arbitrary <*> arbitrary <*> commitMessage
+    where
+      -- A commit message: arbitrary words, with the occasional run of backticks
+      -- thrown in, which sits mid-line and so must not be read as a fence.
+      commitMessage = unwords <$> resize 3 (listOf1 word)
+      word = frequency [(4, getPrintableString <$> arbitrary), (1, pure "```")]
+
+  shrink (Commit change sha message) =
+    [Commit change' sha message | change' <- shrink change]
+      ++ [Commit change sha' message | sha' <- shrink sha]
+      -- The 'String' shrinker can slip in a newline, which would split the
+      -- commit over two lines. Keep shrunk messages printable, like the
+      -- generated ones.
+      ++ [Commit change sha message' | message' <- shrink message, all isPrint message']
 
 data Block = PlainLineOfText String | CodeBlock String [String]
 
@@ -123,6 +147,6 @@ spec :: Spec
 spec = describe "format" $
   it "renders commits that can losslessly be converted back" $
     checkCoverage $
-      forAll (resize 8 (listOf genCommit)) $ \commits ->
+      forAllShrink (resize 8 (listOf arbitrary)) shrink $ \commits ->
         cover 10 (any widened commits) "widened fence" $
           reparse (format commits) === Right commits
