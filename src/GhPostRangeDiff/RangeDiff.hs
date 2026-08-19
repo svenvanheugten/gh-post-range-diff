@@ -3,6 +3,8 @@
 module GhPostRangeDiff.RangeDiff
   ( Change (..),
     Commit (..),
+    CommitMessage (messageText),
+    commitMessage,
     CommitSha (shaText),
     commitSha,
     Interdiff (interdiffText),
@@ -30,6 +32,17 @@ commitSha s
     n = length s
     isHex c = isDigit c || c `elem` ['a' .. 'f']
 
+-- | The subject line of a commit, as `git range-diff` prints it. Holds no
+-- newline of its own; see 'commitMessage'.
+newtype CommitMessage = CommitMessage {messageText :: String}
+  deriving (Eq, Show)
+
+-- | Read a commit message, keeping only the first line. git stores a whole
+-- message but range-diff prints the subject alone, on the header line, so that
+-- is the only part there is to read here.
+commitMessage :: String -> CommitMessage
+commitMessage = CommitMessage . takeWhile (/= '\n')
+
 -- | The interdiff git printed under a @!@ entry, de-indented so its own +/-
 -- sit in column 0. Always ends with a newline; see 'interdiff'.
 newtype Interdiff = Interdiff {interdiffText :: String}
@@ -54,7 +67,7 @@ data Commit = Commit
   { cmChange :: Change,
     -- | The side that still exists: the new sha for =/!/>, the old one for <.
     cmCommitSha :: CommitSha,
-    cmCommitMessage :: String
+    cmCommitMessage :: CommitMessage
   }
   deriving (Eq, Show)
 
@@ -111,7 +124,7 @@ mkCommit l body = case peel 5 l of
   _ -> bad
   where
     -- The side we didn't pick is `-------`, so only the one we keep is read.
-    commit change sha = Commit change (fromMaybe bad (commitSha sha))
+    commit change sha subj = Commit change (fromMaybe bad (commitSha sha)) (commitMessage subj)
     bad = error ("unexpected range-diff header: " ++ l)
 
 -- | Parse `git range-diff` output, one 'Commit' per header line.
