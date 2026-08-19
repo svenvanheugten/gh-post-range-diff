@@ -11,8 +11,8 @@ import Test.QuickCheck.Modifiers (getPrintableString)
 -- | A commit message: printable words with the occasional run of backticks,
 -- which sits mid-line and so must not be read as a code fence.
 --
--- Trimmed of trailing whitespace and never empty, because RangeDiffSpec
--- really does commit these. @git commit -m@ cleans the subject up with
+-- Trimmed of trailing whitespace and never empty, because
+-- "GhPostRangeDiff.Scenario" really does commit these. @git commit -m@ cleans the subject up with
 -- @--cleanup=whitespace@, which strips trailing whitespace, and refuses an
 -- empty message.
 instance Arbitrary CommitMessage where
