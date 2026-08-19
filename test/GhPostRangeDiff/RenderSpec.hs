@@ -1,110 +1,128 @@
-{-# LANGUAGE RecordWildCards #-}
-
--- | Tests for "GhPostRangeDiff.Render".
---
--- Rather than hand-write range-diff text (which would just encode our
--- assumptions about its format), the fixture builds a throwaway git repo, runs
--- the exact `git range-diff` invocation Main uses, and feeds the real output
--- through 'format'. The one scenario exercises all four markers:
---
---  * @!@ updated  — a large, mostly-identical commit so range-diff pairs it
---  * @=@ unchanged
---  * @<@ removed
---  * @>@ added
 module GhPostRangeDiff.RenderSpec (spec) where
 
-import Data.List (intercalate)
-import Data.List.Extra (trim)
+import Data.List (isInfixOf, stripPrefix)
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), CommitSha, Interdiff (interdiffText), commitSha, interdiff)
 import GhPostRangeDiff.Render (format)
-import System.IO.Temp (withSystemTempDirectory)
-import System.Process (CreateProcess (cwd), proc, readCreateProcess)
 import Test.Hspec
+import Test.QuickCheck
 
--- Status emojis, as the codepoints 'format' emits.
-green, red, orange, white :: String
-green = "\128994" -- 🟢 added
-red = "\128308" -- 🔴 removed
-orange = "\128992" -- 🟠 updated
-white = "\9898" -- ⚪ unchanged
+-- | An interdiff: arbitrary text, built from chunks so that newlines and runs
+-- of backticks both turn up often.
+genInterdiff :: Gen Interdiff
+genInterdiff = interdiff . concat <$> listOf chunk
+  where
+    chunk =
+      oneof
+        [ getPrintableString <$> arbitrary,
+          pure "\n",
+          (`replicate` '`') <$> choose (1, 6)
+        ]
 
-git :: FilePath -> [String] -> IO String
-git dir args = readCreateProcess (proc "git" args) {cwd = Just dir} ""
+genChange :: Gen Change
+genChange =
+  oneof
+    [ pure Added,
+      pure Removed,
+      pure Unchanged,
+      Updated <$> genInterdiff
+    ]
 
--- Commit a single file with the given contents and message.
-commit :: FilePath -> FilePath -> String -> String -> IO ()
-commit dir name contents msg = do
-  writeFile (dir ++ "/" ++ name) contents
-  _ <- git dir ["add", name]
-  _ <- git dir ["commit", "-q", "-m", msg]
-  pure ()
+genCommitSha :: Gen CommitSha
+genCommitSha = vectorOf 7 (elements "0123456789abcdef") `suchThatMap` commitSha
 
--- Seven-char abbreviation of a revision, matching what range-diff prints for a
--- small repo.
-short :: FilePath -> String -> IO String
-short dir rev = take 7 . trim <$> git dir ["rev-parse", rev]
+-- | A commit message: arbitrary words, with the occasional run of backticks
+-- thrown in, which sits mid-line and so must not be read as a fence.
+genCommitMessage :: Gen String
+genCommitMessage = unwords <$> resize 3 (listOf1 word)
+  where
+    word = frequency [(4, getPrintableString <$> arbitrary), (1, pure "```")]
 
--- A big file so a one-word change is a small fraction of the commit, which
--- keeps range-diff pairing the two versions (marker @!@) instead of treating
--- them as an unrelated remove + add.
-big :: String -> String
-big lastLine = unlines (["l" ++ show n | n <- [1 :: Int .. 8]] ++ [lastLine])
+genCommit :: Gen Commit
+genCommit = Commit <$> genChange <*> genCommitSha <*> genCommitMessage
 
--- The rendered comment plus the abbreviated shas the renderer should pick: the
--- new side for =/!/>, the old side for <.
-data Fixture = Fixture
-  { out :: String,
-    newBig, newKeep, newFresh, oldGone :: String
-  }
+data Block = PlainLineOfText String | CodeBlock String [String]
 
-buildFixture :: IO Fixture
-buildFixture = withSystemTempDirectory "gh-post-range-diff" $ \dir -> do
-  _ <- git dir ["init", "-q"]
-  _ <- git dir ["config", "user.email", "t@t"]
-  _ <- git dir ["config", "user.name", "t"]
+isBlank :: String -> Bool
+isBlank = all (`elem` " \t")
 
-  commit dir "base.txt" "shared\n" "base"
-  base <- trim <$> git dir ["rev-parse", "HEAD"]
+-- | Check if a line counts as a fence. If it does, return the number of backticks and
+-- the text after it. CommonMark allows up to three spaces of indent on these lines:
+-- https://spec.commonmark.org/0.31.2/#fenced-code-blocks
+matchFence :: Int -> String -> Maybe (Int, String)
+matchFence minimalNumberOfBackticks l
+  | length indent <= 3, length ticks >= minimalNumberOfBackticks = Just (length ticks, rest)
+  | otherwise = Nothing
+  where
+    (indent, l') = span (== ' ') l
+    (ticks, rest) = span (== '`') l'
 
-  _ <- git dir ["checkout", "-q", "-b", "old"]
-  commit dir "big.txt" (big "```OLD") "big feature" -- becomes UPDATED
-  commit dir "keep.txt" "x\n" "add keep" -- becomes UNCHANGED
-  commit dir "gone.txt" "y\n" "add gone" -- becomes REMOVED
-  _ <- git dir ["checkout", "-q", "-b", "new", base]
-  commit dir "big.txt" (big "```NEW") "big feature" -- UPDATED (paired)
-  commit dir "keep.txt" "x\n" "add keep" -- UNCHANGED
-  commit dir "fresh.txt" "z\n" "add fresh" -- ADDED
-  diff <- git dir ["range-diff", base ++ "..old", base ++ "..new"]
+-- | Split Markdown into blocks.
+blocks :: [String] -> Either String [Block]
+blocks [] = Right []
+blocks (l : ls)
+  | isBlank l = blocks ls
+  | Just (n, language) <- matchFence 3 l,
+    '`' `notElem` language =
+      case break (closes n) ls of
+        (body, _ : rest) -> (CodeBlock language body :) <$> blocks rest
+        (_, []) -> Left ("unterminated code fence: " ++ show l)
+  | otherwise = (PlainLineOfText l :) <$> blocks ls
+  where
+    -- A fence closes on the first line whose own run is at least as long,
+    -- followed by nothing but spaces or tabs.
+    closes n = maybe False (isBlank . snd) . matchFence n
 
-  Fixture (format diff)
-    <$> short dir "new~2"
-    <*> short dir "new~1"
-    <*> short dir "new"
-    <*> short dir "old"
+data Tag = TagAdded | TagRemoved | TagUpdated | TagUnchanged
+
+data Header = Header Tag CommitSha String
+
+parseTag :: String -> Either String (Tag, String)
+parseTag l
+  | Just r <- tag "\128994 **Added**" = Right (TagAdded, r)
+  | Just r <- tag "\128308 **Removed**" = Right (TagRemoved, r)
+  | Just r <- tag "\128992 **Updated**" = Right (TagUpdated, r)
+  | Just r <- tag "\9898 **Unchanged**" = Right (TagUnchanged, r)
+  | otherwise = Left ("not a commit line: " ++ show l)
+  where
+    tag t = stripPrefix (t ++ " ") l
+
+parseHeader :: String -> Either String Header
+parseHeader l = do
+  (tag, rest) <- parseTag l
+  case break (== ' ') rest of
+    (s, ' ' : commitMessage) -> case commitSha s of
+      Just sha -> Right (Header tag sha commitMessage)
+      Nothing -> Left ("commit line has no sha: " ++ show l)
+    _ -> Left ("commit line has no commit message: " ++ show l)
+
+toCommits :: [Block] -> Either String [Commit]
+toCommits [] = Right []
+toCommits (PlainLineOfText l : bs) = do
+  Header tag sha commitMessage <- parseHeader l
+  let (change, bs') = case (tag, bs) of
+        -- A fenced diff belongs to the updated commit right above it.
+        (TagUpdated, CodeBlock "diff" body : rest) -> (Updated (interdiff (unlines body)), rest)
+        (TagUpdated, _) -> (Updated (interdiff ""), bs)
+        (TagAdded, _) -> (Added, bs)
+        (TagRemoved, _) -> (Removed, bs)
+        (TagUnchanged, _) -> (Unchanged, bs)
+  (Commit change sha commitMessage :) <$> toCommits bs'
+toCommits (CodeBlock info _ : _) = Left ("stray code block: " ++ show info)
+
+-- | Read 'format' output back into the commits it was rendered from.
+reparse :: String -> Either String [Commit]
+reparse s = blocks (lines s) >>= toCommits
+
+-- | Whether a three-backtick fence would have been closed by the interdiff
+-- itself, so that `format` had to widen it.
+widened :: Commit -> Bool
+widened (Commit (Updated patch) _ _) = "```" `isInfixOf` interdiffText patch
+widened _ = False
 
 spec :: Spec
-spec = describe "format" $ do
-  Fixture {..} <- runIO buildFixture
-
-  it "renders a status marker and bare sha per commit, with a changed commit's interdiff shown in-place in a fence that survives backticks in the patch" $
-    out
-      `shouldBe` intercalate
-        "\n"
-        [ orange ++ " **Updated** " ++ newBig ++ " big feature",
-          "",
-          -- The changed line carries a ``` run, so the fence widens to
-          -- four backticks to stay unbreakable.
-          "````diff",
-          "@@ big.txt (new)",
-          " +l6",
-          " +l7",
-          " +l8",
-          "-+```OLD",
-          "++```NEW",
-          "````",
-          "",
-          white ++ " **Unchanged** " ++ newKeep ++ " add keep",
-          "",
-          red ++ " **Removed** " ++ oldGone ++ " add gone",
-          "",
-          green ++ " **Added** " ++ newFresh ++ " add fresh"
-        ]
+spec = describe "format" $
+  it "renders commits that can losslessly be converted back" $
+    checkCoverage $
+      forAll (resize 8 (listOf genCommit)) $ \commits ->
+        cover 10 (any widened commits) "widened fence" $
+          reparse (format commits) === Right commits
