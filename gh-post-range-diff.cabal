@@ -63,9 +63,11 @@ test-suite spec
     hs-source-dirs:   test
     main-is:          Spec.hs
     other-modules:
+        GhPostRangeDiff.FakeGitHub
         GhPostRangeDiff.Gen
         GhPostRangeDiff.RangeDiffSpec
         GhPostRangeDiff.RenderSpec
+        GhPostRangeDiff.RunSpec
         GhPostRangeDiff.Scenario
     build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
     build-depends:

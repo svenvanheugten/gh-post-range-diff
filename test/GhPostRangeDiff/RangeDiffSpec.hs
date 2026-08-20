@@ -106,13 +106,11 @@ spec = describe "rangeDiff" $
         -- The unparsed range-diff is the first thing you want to look at when the
         -- model of git's output turns out to be the thing that is wrong.
         diff <- Git.rangeDiff oldBase oldHead newBase newHead
+        base <- baseMovement repo oldV newV
         pure
           . tabulate "markers" (mapMaybe (marker oldV newV) changes)
-          -- Whether the two ranges forked from one and the same commit is read
-          -- off the repo rather than guessed at, so the scenario can be told
-          -- what its base region did.
           . tabulate "rewrites" (mapMaybe (rewriteKind oldV newV) changes)
-          . tabulate "base" [if oldBase == newBase then "shared" else "moved"]
+          . tabulate "base" [base]
           . tabulate "commits on the larger side" [bucket (widest changes)]
           . counterexample ("range-diff:\n" ++ diff)
           $ canonical commits === canonical (expectedCommits repo sc oldV newV)

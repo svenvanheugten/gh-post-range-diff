@@ -14,7 +14,10 @@ module GhPostRangeDiff.Scenario
     expectedInterdiff,
     Range (..),
     Repo,
+    repoDir,
+    git,
     rangeOf,
+    baseMovement,
     shaOf,
     withRepo,
   )
@@ -240,6 +243,7 @@ data Author = Author
 author :: Author
 author = Author {auName = "t", auEmail = "t@t"}
 
+-- | Run a git command in whichever repo is current, and hand back its output.
 git :: [String] -> IO String
 git = Git.sh "git"
 
@@ -265,13 +269,33 @@ data Built = Built
     btShas :: [(ChangeNo, CommitSha)]
   }
 
--- | The repo a scenario was built into: one build per version, in the same
--- order as the scenario's states.
-newtype Repo = Repo [Built]
+-- | The repo a scenario was built into: where it is, and one build per version,
+-- in the same order as the scenario's states.
+data Repo = Repo FilePath [Built]
+
+-- | Where the repo is, so that whatever else is done with it (opening a pull
+-- request on it, cloning it) can be done from anywhere.
+repoDir :: Repo -> FilePath
+repoDir (Repo dir _) = dir
 
 -- | The range one version of the branch spans.
 rangeOf :: Repo -> Version -> Range
 rangeOf repo v = btRange (builtAt repo v)
+
+-- | What the base under the branch did between two versions, read off the repo
+-- rather than guessed at, so a scenario can be told what its base region did.
+-- Only good for saying what a scenario covered.
+--
+-- A base that advanced got there by an ordinary push, which leaves no
+-- force-push event to reconstruct it from; a base that was forced leaves one.
+baseMovement :: Repo -> Version -> Version -> IO String
+baseMovement repo v w
+  | base v == base w = pure "shared"
+  | otherwise = do
+      fastForward <- Git.isAncestor (base v) (base w)
+      pure (if fastForward then "advanced" else "forced")
+  where
+    base = rgBase . rangeOf repo
 
 -- | The commit one version made of one change. Only ask about a change that
 -- version carries, since there is no commit to name otherwise.
@@ -282,7 +306,7 @@ shaOf repo v@(Version i) n@(ChangeNo k) =
     (lookup n (btShas (builtAt repo v)))
 
 builtAt :: Repo -> Version -> Built
-builtAt (Repo builts) (Version v) = builts !! v
+builtAt (Repo _ builts) (Version v) = builts !! v
 
 -- | Build the scenario into a throwaway repo and run the action in it.
 withRepo :: Scenario -> (Repo -> IO a) -> IO a
@@ -312,7 +336,7 @@ withRepo sc act = withSystemTempDirectory "gh-post-range-diff" $ \dir -> withCur
         tip <- Git.revParse "HEAD"
         Built (Range base tip) <$> changeShas base branch v changes
   builts <- mapM buildVersion (versions sc)
-  act (Repo builts)
+  act (Repo dir builts)
   where
     commitChange v (n, ch) = case stateAt v ch of
       Nothing -> pure ()
