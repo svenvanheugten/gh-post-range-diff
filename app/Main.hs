@@ -1,6 +1,7 @@
 module Main where
 
 import GhPostRangeDiff.Git (commitSha)
+import GhPostRangeDiff.GitHub (gh)
 import GhPostRangeDiff.Run (manual, run)
 import System.Environment (getArgs)
 
@@ -11,10 +12,10 @@ main = do
   -- payload (CI use: report exactly that push, whatever kind it is).
   args <- getArgs
   case args of
-    [pr] -> manual pr
+    [pr] -> manual (gh pr)
     [pr, before, after]
       | Just b <- commitSha before,
         Just a <- commitSha after ->
-          run pr b a
-      | otherwise -> manual pr
+          run (gh pr) b a
+      | otherwise -> manual (gh pr)
     _ -> error "usage: gh-post-range-diff <pr> [<before-sha> <after-sha>]"
