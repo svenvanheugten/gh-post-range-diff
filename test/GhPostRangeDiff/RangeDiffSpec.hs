@@ -5,7 +5,7 @@ module GhPostRangeDiff.RangeDiffSpec (spec) where
 
 import Data.List (sortOn)
 import Data.Maybe (fromMaybe)
-import GhPostRangeDiff.Gen qualified as Gen
+import GhPostRangeDiff.Gen ()
 import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.RangeDiff qualified as RangeDiff
 import System.Directory (withCurrentDirectory)
@@ -59,16 +59,16 @@ instance Arbitrary Change where
 -- the message it is committed with on whichever sides it appears.
 data Step = Step
   { stChange :: Change,
-    stMessage :: String
+    stMessage :: RangeDiff.CommitMessage
   }
   deriving (Show)
 
 instance Arbitrary Step where
-  arbitrary = Step <$> arbitrary <*> Gen.commitMessage
+  arbitrary = Step <$> arbitrary <*> arbitrary
 
   shrink (Step change message) =
     [Step change' message | change' <- shrink change]
-      ++ [Step change message' | message' <- Gen.shrinkCommitMessage message]
+      ++ [Step change message' | message' <- shrink message]
 
 -- | Does the scenario leave at least one commit on each branch? `git range-diff`
 -- refuses an empty commit range, so it has to.
@@ -119,7 +119,7 @@ big lastLine = unlines (["l" ++ show n | n <- [1 :: Int .. 8]] ++ [lastLine])
 commitStep :: Side -> Int -> Step -> IO ()
 commitStep side n (Step change message)
   | not (onSide side change) = pure ()
-  | otherwise = commit (file n) contents message
+  | otherwise = commit (file n) contents (RangeDiff.messageText message)
   where
     contents = case (side, change) of
       (_, Unchanged) -> "x\n"

@@ -6,7 +6,7 @@
 module GhPostRangeDiff.Render (format) where
 
 import Data.List (group, intercalate)
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), interdiffText, shaText)
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), interdiffText, messageText, shaText)
 
 -- | The longest run of consecutive backticks in a string. Used to size a code
 -- fence so it can't be closed early by backticks in the content.
@@ -17,7 +17,7 @@ render :: Commit -> String
 render (Commit change sha subj) =
   -- The sha is left bare (not in a `code` span) so GitHub auto-links it to
   -- the commit.
-  tag ++ " " ++ shaText sha ++ " " ++ subj ++ details
+  tag ++ " " ++ shaText sha ++ " " ++ messageText subj ++ details
   where
     tag = case change of
       Added -> "\128994 **Added**" -- 🟢

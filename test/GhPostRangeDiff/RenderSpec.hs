@@ -4,8 +4,8 @@ module GhPostRangeDiff.RenderSpec (spec) where
 
 import Data.List (isInfixOf, stripPrefix)
 import Data.Maybe (mapMaybe)
-import GhPostRangeDiff.Gen qualified as Gen
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), CommitSha, Interdiff (interdiffText), commitSha, interdiff, shaText)
+import GhPostRangeDiff.Gen ()
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), CommitMessage, CommitSha, Interdiff (interdiffText), commitMessage, commitSha, interdiff, shaText)
 import GhPostRangeDiff.Render (format)
 import Test.Hspec
 import Test.QuickCheck
@@ -49,12 +49,12 @@ instance Arbitrary Change where
   shrink _ = []
 
 instance Arbitrary Commit where
-  arbitrary = Commit <$> arbitrary <*> arbitrary <*> Gen.commitMessage
+  arbitrary = Commit <$> arbitrary <*> arbitrary <*> arbitrary
 
   shrink (Commit change sha message) =
     [Commit change' sha message | change' <- shrink change]
       ++ [Commit change sha' message | sha' <- shrink sha]
-      ++ [Commit change sha message' | message' <- Gen.shrinkCommitMessage message]
+      ++ [Commit change sha message' | message' <- shrink message]
 
 data Block = PlainLineOfText String | CodeBlock String [String]
 
@@ -90,7 +90,7 @@ blocks (l : ls)
 
 data Tag = TagAdded | TagRemoved | TagUpdated | TagUnchanged
 
-data Header = Header Tag CommitSha String
+data Header = Header Tag CommitSha CommitMessage
 
 parseTag :: String -> Either String (Tag, String)
 parseTag l
@@ -106,15 +106,15 @@ parseHeader :: String -> Either String Header
 parseHeader l = do
   (tag, rest) <- parseTag l
   case break (== ' ') rest of
-    (s, ' ' : commitMessage) -> case commitSha s of
-      Just sha -> Right (Header tag sha commitMessage)
+    (s, ' ' : message) -> case commitSha s of
+      Just sha -> Right (Header tag sha (commitMessage message))
       Nothing -> Left ("commit line has no sha: " ++ show l)
     _ -> Left ("commit line has no commit message: " ++ show l)
 
 toCommits :: [Block] -> Either String [Commit]
 toCommits [] = Right []
 toCommits (PlainLineOfText l : bs) = do
-  Header tag sha commitMessage <- parseHeader l
+  Header tag sha message <- parseHeader l
   let (change, bs') = case (tag, bs) of
         -- A fenced diff belongs to the updated commit right above it.
         (TagUpdated, CodeBlock "diff" body : rest) -> (Updated (interdiff (unlines body)), rest)
@@ -122,7 +122,7 @@ toCommits (PlainLineOfText l : bs) = do
         (TagAdded, _) -> (Added, bs)
         (TagRemoved, _) -> (Removed, bs)
         (TagUnchanged, _) -> (Unchanged, bs)
-  (Commit change sha commitMessage :) <$> toCommits bs'
+  (Commit change sha message :) <$> toCommits bs'
 toCommits (CodeBlock info _ : _) = Left ("stray code block: " ++ show info)
 
 -- | Read 'format' output back into the commits it was rendered from.
