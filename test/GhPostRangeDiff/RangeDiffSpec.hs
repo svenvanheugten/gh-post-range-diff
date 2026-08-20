@@ -17,6 +17,7 @@ import Test.QuickCheck
     choose,
     counterexample,
     forAllShrink,
+    frequency,
     getPrintableString,
     ioProperty,
     oneof,
@@ -228,16 +229,21 @@ spec = describe "rangeDiff" $
         Fixture {..} <- buildFixture steps
         pure
           . tabulate "changes" (map (marker . stChange) steps)
+          . tabulate "commits on the larger side" [bucket (widest steps)]
           . counterexample ("range-diff:\n" ++ fixDiff)
           $ canonical fixCommits === canonical (expected fixOldShas fixNewShas steps)
   where
-    -- A whole repo's worth of steps, one per commit. Kept short, because every
-    -- one of them really is committed, and because 'rangeDiff' can only read a
-    -- range of fewer than ten commits for now.
+    -- A whole repo's worth of steps, one per commit. Mostly short, because every
+    -- one of them really is committed, but often enough into double digits to
+    -- exercise the leading space git pads a single-digit commit number out with
+    -- once a range holds ten commits.
     scenario = sizedSteps `suchThat` bothSidesNonEmpty
     sizedSteps = do
-      n <- choose (1, 6)
+      n <- frequency [(3, choose (1, 6)), (1, choose (10, 12))]
       vectorOf n arbitrary
+
+    widest ss = maximum [length (filter (onSide side . stChange) ss) | side <- [Old, New]]
+    bucket n = if n >= 10 then "ten or more" else "fewer than ten"
 
     marker = \case
       Unchanged -> "="
