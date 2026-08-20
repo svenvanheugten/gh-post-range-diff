@@ -2,7 +2,8 @@
 -- be mocked in the tests. The one implementation that talks to the real
 -- thing is 'gh', with the `gh` invocations and timeline parsing it needs.
 module GhPostRangeDiff.GitHub
-  ( Ev (..),
+  ( Ref (..),
+    Ev (..),
     Handle (..),
     gh,
   )
@@ -12,10 +13,15 @@ import Data.List.Extra (trim)
 import GhPostRangeDiff.Git (CommitSha, commitSha, sh)
 import System.Process (callProcess)
 
--- One timeline event: type, before-oid, after-oid. GitHub reports both oids in
--- full, so they read straight back as shas.
+-- | Which of the pull request's two branches a force-push moved: the branch
+-- under review, or the branch it is targeting.
+data Ref = Head | Base
+  deriving (Eq, Show)
+
+-- One force-push: the ref it moved, its before-oid and its after-oid. GitHub
+-- reports both oids in full, so they read straight back as shas.
 data Ev = Ev
-  { evType :: String,
+  { evRef :: Ref,
     evBefore, evAfter :: CommitSha
   }
 
@@ -40,13 +46,20 @@ gh pr =
       postComment = ghPostComment pr
     }
 
+-- The query asks for the two force-push events and nothing else, so any other
+-- event type is not something we know how to read.
 parse :: String -> Ev
 parse l = case words l of
   (t : b : c : _)
-    | Just before <- commitSha b,
+    | Just r <- ref t,
+      Just before <- commitSha b,
       Just after <- commitSha c ->
-        Ev t before after
+        Ev r before after
   _ -> error ("unexpected timeline line: " ++ l)
+  where
+    ref "HeadRefForcePushedEvent" = Just Head
+    ref "BaseRefForcePushedEvent" = Just Base
+    ref _ = Nothing
 
 query :: String
 query =

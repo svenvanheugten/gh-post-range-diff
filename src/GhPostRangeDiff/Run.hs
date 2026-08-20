@@ -3,7 +3,7 @@ module GhPostRangeDiff.Run (run, manual) where
 
 import Data.List (isInfixOf, nub, unsnoc)
 import GhPostRangeDiff.Git (CommitSha, abbrev, baseFor, fetch, revParse, shaText)
-import GhPostRangeDiff.GitHub (Ev (..))
+import GhPostRangeDiff.GitHub (Ev (..), Ref (..))
 import GhPostRangeDiff.GitHub qualified as GitHub
 import GhPostRangeDiff.RangeDiff (rangeDiff)
 import GhPostRangeDiff.Render (format)
@@ -14,7 +14,7 @@ run pr oldHead newHead = do
   base <- GitHub.baseRef pr
   -- Every recorded base tip, in chronological order, for base reconstruction.
   baseOids <-
-    nub . concatMap (\e -> [evBefore e, evAfter e]) . filter ((== "BaseRefForcePushedEvent") . evType)
+    nub . concatMap (\e -> [evBefore e, evAfter e]) . filter ((== Base) . evRef)
       <$> GitHub.timeline pr
 
   -- Hidden marker identifying this exact push (before..after). Lets us run the
@@ -46,7 +46,7 @@ run pr oldHead newHead = do
 -- force-push in the timeline and hand off to `run`.
 manual :: GitHub.Handle -> IO ()
 manual pr = do
-  heads <- filter ((== "HeadRefForcePushedEvent") . evType) <$> GitHub.timeline pr
+  heads <- filter ((== Head) . evRef) <$> GitHub.timeline pr
   case unsnoc heads of
     Nothing -> putStrLn "No force-push events on this PR. Nothing to diff."
     Just (_, h) -> run pr (evBefore h) (evAfter h)
