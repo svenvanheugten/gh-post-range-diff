@@ -2,27 +2,29 @@
 module GhPostRangeDiff.Gen (commitMessage, shrinkCommitMessage) where
 
 import Data.Char (isPrint)
-import Test.QuickCheck (Gen, arbitraryPrintableChar, frequency, listOf1, resize, shrink, suchThat)
+import Data.List.Extra (trimEnd)
+import Test.QuickCheck (Gen, frequency, listOf1, resize, shrink, suchThat)
+import Test.QuickCheck.Arbitrary (arbitrary)
+import Test.QuickCheck.Modifiers (getPrintableString)
 
 -- | A commit message: printable words with the occasional run of backticks,
 -- which sits mid-line and so must not be read as a code fence.
 --
--- The words are separated by a single space each, and the message is never
--- empty, because RangeDiffSpec really does commit these: @git commit -m@
--- refuses an empty message, and 'GhPostRangeDiff.RangeDiff.rangeDiff' reads a
--- subject back a word at a time, so it can only be faithful to a message that
--- is spaced like this one.
+-- Trimmed of trailing whitespace and never empty, because RangeDiffSpec
+-- really does commit these. @git commit -m@ cleans the subject up with
+-- @--cleanup=whitespace@, which strips trailing whitespace, and refuses an
+-- empty message.
 commitMessage :: Gen String
-commitMessage = unwords <$> resize 3 (listOf1 word)
+commitMessage = (trimEnd . unwords <$> resize 3 (listOf1 word)) `suchThat` (not . null)
   where
-    word = frequency [(4, listOf1 wordChar), (1, pure "```")]
-    wordChar = arbitraryPrintableChar `suchThat` (/= ' ')
+    word = frequency [(4, getPrintableString <$> arbitrary), (1, pure "```")]
 
 -- | Shrink a commit message to another one 'commitMessage' could have made.
 -- The 'String' shrinker reaches outside that set: it can pick a character that
--- isn't printable, empty the message altogether, or leave a run of spaces
--- behind where it dropped the only character between two of them.
+-- isn't printable, drop the last non-space one and leave trailing whitespace
+-- behind, or empty the message altogether. Trimming a candidate can land it
+-- back on the original, which would let shrinking loop, so those go too.
 shrinkCommitMessage :: String -> [String]
-shrinkCommitMessage = filter usable . shrink
+shrinkCommitMessage m = filter usable (map trimEnd (shrink m))
   where
-    usable m = not (null m) && all isPrint m && m == unwords (words m)
+    usable m' = not (null m') && all isPrint m' && m' /= m
