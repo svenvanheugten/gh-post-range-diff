@@ -5,8 +5,6 @@ module GhPostRangeDiff.RangeDiff
     Commit (..),
     CommitMessage (messageText),
     commitMessage,
-    CommitSha (shaText),
-    commitSha,
     Interdiff (interdiffText),
     interdiff,
     rangeDiff,
@@ -14,23 +12,9 @@ module GhPostRangeDiff.RangeDiff
 where
 
 import Data.Bifunctor (first)
-import Data.Char (isDigit)
 import Data.Maybe (fromMaybe)
+import GhPostRangeDiff.Git (CommitSha, commitSha)
 import GhPostRangeDiff.Git qualified as Git
-
--- | An abbreviated commit sha, as `git range-diff` prints it.
-newtype CommitSha = CommitSha {shaText :: String}
-  deriving (Eq, Show)
-
--- | Read a sha, rejecting anything that isn't one. Git abbreviates to at least
--- four hex digits and never past the full forty, and prints them in lowercase.
-commitSha :: String -> Maybe CommitSha
-commitSha s
-  | n >= 4, n <= 40, all isHex s = Just (CommitSha s)
-  | otherwise = Nothing
-  where
-    n = length s
-    isHex c = isDigit c || c `elem` ['a' .. 'f']
 
 -- | The subject line of a commit, as `git range-diff` prints it. Holds no
 -- newline of its own; see 'commitMessage'.
@@ -133,6 +117,6 @@ parse = map (uncurry mkCommit) . chunks . lines
 
 -- | Line up @oldBase..oldHead@ against @newBase..newHead@: one 'Commit' per
 -- commit in either range, saying what happened to it.
-rangeDiff :: String -> String -> String -> String -> IO [Commit]
+rangeDiff :: CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
 rangeDiff oldBase oldHead newBase newHead =
   parse <$> Git.rangeDiff oldBase oldHead newBase newHead

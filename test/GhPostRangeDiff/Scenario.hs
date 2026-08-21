@@ -22,6 +22,7 @@ where
 
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import GhPostRangeDiff.Gen ()
+import GhPostRangeDiff.Git (CommitSha, knownSha, shaText)
 import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.RangeDiff qualified as RangeDiff
 import System.Directory (withCurrentDirectory)
@@ -250,22 +251,18 @@ commit name text msg = do
   _ <- git ["commit", "-q", "-m", msg]
   pure ()
 
--- | Read a sha git just printed, which we know to be one.
-knownSha :: String -> RangeDiff.CommitSha
-knownSha s = fromMaybe (error ("not a sha: " ++ s)) (RangeDiff.commitSha s)
-
 -- | Where one version of the branch begins and ends: the commit its range is
 -- taken from, and its tip. This is the range `git range-diff` is handed.
 data Range = Range
-  { rgBase :: RangeDiff.CommitSha,
-    rgHead :: RangeDiff.CommitSha
+  { rgBase :: CommitSha,
+    rgHead :: CommitSha
   }
 
 -- | What one version of the branch was built into.
 data Built = Built
   { btRange :: Range,
     -- | the commit each change it carries became
-    btShas :: [(ChangeNo, RangeDiff.CommitSha)]
+    btShas :: [(ChangeNo, CommitSha)]
   }
 
 -- | The repo a scenario was built into: one build per version, in the same
@@ -278,7 +275,7 @@ rangeOf repo v = btRange (builtAt repo v)
 
 -- | The commit one version made of one change. Only ask about a change that
 -- version carries, since there is no commit to name otherwise.
-shaOf :: Repo -> Version -> ChangeNo -> RangeDiff.CommitSha
+shaOf :: Repo -> Version -> ChangeNo -> CommitSha
 shaOf repo v@(Version i) n@(ChangeNo k) =
   fromMaybe
     (error ("change " ++ show k ++ " is not in version " ++ show i))
@@ -301,18 +298,18 @@ withRepo sc act = withSystemTempDirectory "gh-post-range-diff" $ \dir -> withCur
   -- Every version has to start somewhere, and they all start here, on one and
   -- the same commit.
   commit "root.txt" "root\n" "root"
-  root <- knownSha <$> Git.revParse "HEAD"
+  root <- Git.revParse "HEAD"
 
   let (baseChanges, changes) = regions sc
       -- Commit a version's changes from the root up, stopping at the end of the
       -- base region to note the commit its range should be taken from.
       buildVersion v@(Version i) = do
         let branch = "v" ++ show i
-        _ <- git ["checkout", "-q", "-b", branch, RangeDiff.shaText root]
+        _ <- git ["checkout", "-q", "-b", branch, shaText root]
         mapM_ (commitChange v) baseChanges
-        base <- knownSha <$> Git.revParse "HEAD"
+        base <- Git.revParse "HEAD"
         mapM_ (commitChange v) changes
-        tip <- knownSha <$> Git.revParse "HEAD"
+        tip <- Git.revParse "HEAD"
         Built (Range base tip) <$> changeShas base branch v changes
   builts <- mapM buildVersion (versions sc)
   act (Repo builts)
@@ -323,7 +320,7 @@ withRepo sc act = withSystemTempDirectory "gh-post-range-diff" $ \dir -> withCur
 
 -- | Which change ended up as which commit on one version of the branch.
 -- `rev-list` is newest first, so it lines up with the scenario once reversed.
-changeShas :: RangeDiff.CommitSha -> String -> Version -> [(ChangeNo, Change)] -> IO [(ChangeNo, RangeDiff.CommitSha)]
+changeShas :: CommitSha -> String -> Version -> [(ChangeNo, Change)] -> IO [(ChangeNo, CommitSha)]
 changeShas base branch v changes = do
-  shas <- reverse . lines <$> git ["rev-list", RangeDiff.shaText base ++ ".." ++ branch]
+  shas <- reverse . lines <$> git ["rev-list", shaText base ++ ".." ++ branch]
   pure (zip [n | (n, ch) <- changes, isJust (stateAt v ch)] (map knownSha shas))

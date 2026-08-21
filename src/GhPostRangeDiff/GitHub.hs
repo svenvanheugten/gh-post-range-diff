@@ -9,15 +9,22 @@ module GhPostRangeDiff.GitHub
 where
 
 import Data.List.Extra (trim)
-import GhPostRangeDiff.Git (sh)
+import GhPostRangeDiff.Git (CommitSha, commitSha, sh)
 import System.Process (callProcess)
 
--- One timeline event: type, before-oid, after-oid.
-data Ev = Ev {evType, evBefore, evAfter :: String}
+-- One timeline event: type, before-oid, after-oid. GitHub reports both oids in
+-- full, so they read straight back as shas.
+data Ev = Ev
+  { evType :: String,
+    evBefore, evAfter :: CommitSha
+  }
 
 parse :: String -> Ev
 parse l = case words l of
-  (t : b : c : _) -> Ev t b c
+  (t : b : c : _)
+    | Just before <- commitSha b,
+      Just after <- commitSha c ->
+        Ev t before after
   _ -> error ("unexpected timeline line: " ++ l)
 
 query :: String
