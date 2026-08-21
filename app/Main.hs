@@ -1,8 +1,10 @@
 module Main where
 
+import Data.List (unsnoc)
 import GhPostRangeDiff.Git (commitSha)
-import GhPostRangeDiff.GitHub (gh)
-import GhPostRangeDiff.Run (manual, run)
+import GhPostRangeDiff.GitHub (Ev (..), Ref (..), gh)
+import GhPostRangeDiff.GitHub qualified as GitHub
+import GhPostRangeDiff.Run (run)
 import System.Environment (getArgs)
 
 main :: IO ()
@@ -19,3 +21,12 @@ main = do
           run (gh pr) b a
       | otherwise -> manual (gh pr)
     _ -> error "usage: gh-post-range-diff <pr> [<before-sha> <after-sha>]"
+
+-- Manual use: no SHAs on the command line, so derive them from the most recent
+-- force-push in the timeline and hand off to `run`.
+manual :: GitHub.Handle -> IO ()
+manual pr = do
+  heads <- filter ((== Head) . evRef) <$> GitHub.timeline pr
+  case unsnoc heads of
+    Nothing -> putStrLn "No force-push events on this PR. Nothing to diff."
+    Just (_, h) -> run pr (evBefore h) (evAfter h)
