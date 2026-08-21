@@ -29,6 +29,11 @@ data PullRequest = PullRequest
 -- | The branches the pull request is between: the one it targets, and the one
 -- under review. Names of our choosing, so keep them clear of whatever else the
 -- repo puts branches under.
+--
+-- The repo they are placed in is a jj repo, which reads them as bookmarks of
+-- its own and carries them along as it rewrites the commits under them. So they
+-- wander off between pushes; each push puts them back where the pull request
+-- has them, and nothing reads them in between.
 branch :: GitHub.Ref -> String
 branch GitHub.Base = "pr-base"
 branch GitHub.Head = "pr-head"

@@ -1,102 +1,72 @@
--- | Reporting on every push a scenario describes, by replaying it onto a pull
--- request opened on the scenario's own repo and letting the tool loose on it
--- the way the action does.
+-- | Reporting on every push a branch goes through, by opening a pull request on
+-- the repo the branch is being rewritten in, pushing every version of it, and
+-- letting the tool loose on the pull request the way the action does.
 module GhPostRangeDiff.RunSpec (spec) where
 
-import Control.Monad (forM)
-import Data.List (intercalate, isPrefixOf, tails, unsnoc)
-import Data.Maybe (catMaybes)
+import Data.List (intercalate, isPrefixOf)
 import GhPostRangeDiff.FakeGitHub (PullRequest)
 import GhPostRangeDiff.FakeGitHub qualified as FakeGitHub
-import GhPostRangeDiff.Git (shaText)
+import GhPostRangeDiff.Git (abbrev)
 import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.GitHub (Ev (..))
-import GhPostRangeDiff.GitHub qualified as GitHub
+import GhPostRangeDiff.Plan (Action (..), Plan, Shape (..), Step (..), everyRewrite, outcome)
 import GhPostRangeDiff.RangeDiff qualified as RangeDiff
 import GhPostRangeDiff.Render (format)
+import GhPostRangeDiff.Repo
 import GhPostRangeDiff.Run (Reported (..), run)
-import GhPostRangeDiff.Scenario
 import System.Directory (withCurrentDirectory)
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
 import Test.Hspec.QuickCheck (modifyMaxSuccess)
-import Test.QuickCheck (Discard (Discard), Gen, Property, choose, conjoin, counterexample, forAllShrink, ioProperty, property, tabulate, (===))
+import Test.QuickCheck (conjoin, counterexample, tabulate, (===))
 
--- * The pull request the pushes land on
+-- | One version of the branch pushed: what the push was, what it should get
+-- reported with, and what reporting on it came to.
+data Push = Push
+  { pshEv :: Ev,
+    -- | what the base under the branch did to get here, which is only good for
+    -- saying what a scenario covered
+    pshBaseMoved :: String,
+    pshRangeDiff :: [RangeDiff.Commit],
+    pshReported :: Reported
+  }
 
--- | A pull request just opened on the scenario's repo, on the version the
--- branch was first built as. Both branches had to be pushed before there was a
--- pull request to open, so it starts out knowing where each of them is.
---
--- The pull request plants a branch per ref in the repo, which is what a
--- checkout of it has to fetch. Those names have to stay clear of the branch per
--- version that 'withRepo' creates.
-newPullRequest :: Repo -> IO PullRequest
-newPullRequest repo = do
-  let Range base head' = rangeOf repo (Version 0)
-  FakeGitHub.newPullRequest (repoDir repo) base head'
-
--- * The pushes a scenario describes
-
--- | Push the version @v@ of the branch, as far as GitHub can see it: the base
--- branch ends up where that version was built on, the branch under review on
--- its tip, and the timeline records whichever of the two moves was a
--- force-push.
---
--- Hand back the push to the branch under review, which is the one the action
--- fires on and the before/after it is handed, or 'Nothing' where the branch
--- came out exactly as it already was, so nothing was pushed and nothing fired.
-push :: PullRequest -> Repo -> Version -> IO (Maybe GitHub.Ev)
-push pr repo v = FakeGitHub.push pr base head'
+-- | Push the version of the branch a rewrite left behind: the commit it forks
+-- off onto the branch the pull request targets, its tip onto the branch under
+-- review. Then report on it where the action reports on it: against the pull
+-- request as GitHub has it so far, in a repo of its own that has fetched
+-- nothing yet, with the repo the pull request is on as its origin. Whatever the
+-- tool needs to diff, it has to go and get.
+push :: PullRequest -> Rewrite -> IO Push
+push pr rw = do
+  let Range base head' = rwNow rw
+  pushed <- FakeGitHub.push pr base head'
+  ev <- case pushed of
+    Nothing -> fail "the branch came out as it already was, so nothing was pushed"
+    Just ev -> pure ev
+  moved <- baseMovement (rgBase (rwWas rw)) base
+  reported <-
+    withSystemTempDirectory "gh-post-range-diff-checkout" $ \dir -> withCurrentDirectory dir $ do
+      _ <- git ["init", "-q"]
+      _ <- git ["remote", "add", "origin", FakeGitHub.origin pr]
+      -- The scenario knows its commits by their full shas, so the range-diff
+      -- taken here has to name them the same way the scenario's repo does.
+      _ <- git ["config", "core.abbrev", "no"]
+      run (FakeGitHub.handle pr) (evBefore ev) (evAfter ev)
+  pure (Push ev moved (rwRangeDiff rw) reported)
   where
-    Range base head' = rangeOf repo v
+    git = Git.sh "git"
 
--- | Report on a push where the action reports on it: against the pull request
--- as GitHub has it so far, in a repo of its own that has fetched nothing yet,
--- with the repo the pull request is on as its origin. Whatever the tool needs
--- to diff, it has to go and get.
-report :: PullRequest -> GitHub.Ev -> IO Reported
-report pr ev =
-  withSystemTempDirectory "gh-post-range-diff-checkout" $ \dir -> withCurrentDirectory dir $ do
-    _ <- git ["init", "-q"]
-    _ <- git ["remote", "add", "origin", FakeGitHub.origin pr]
-    -- The scenario knows its commits by their full shas, so the range-diff
-    -- taken here has to name them the same way the scenario's repo does.
-    _ <- git ["config", "core.abbrev", "no"]
-    run (FakeGitHub.handle pr) (evBefore ev) (evAfter ev)
-
--- * The property a spec runs on a scenario
-
--- | Say what the replay a property ran on turned out to cover: how many pushes
--- it made, and what each of them did to the base under the branch. Each push is
--- named by the version of the branch it replaced and the one it left behind.
-coverage :: Repo -> [(Version, Version)] -> Property -> IO Property
-coverage repo ps prop = do
-  bases <- sequence [baseMovement repo v w | (v, w) <- ps]
-  pure (tabulate "pushes" [show (length ps)] (tabulate "base" bases prop))
-
--- | Some situations are ambiguous, and we need to avoid those.
---
--- Say a version commits @A@ and then @B@ under the fork point, and a later one
--- drops @B@: that later base is an ancestor of the earlier head too, and the
--- newer of the two, so the tool takes it as the base commit for both the old
--- and new version. The old version then starts at @A@, with @B@ a commit of
--- the branch rather than one under it.
-unambiguous :: Repo -> Scenario -> IO Bool
-unambiguous repo sc = and <$> sequence [older v w | (v, w) <- laterVersions]
-  where
-    laterVersions = [(v, w) | (v : ws) <- tails (versions sc), w <- ws]
-    older v w
-      | base w == base v = pure True
-      | otherwise = not <$> Git.isAncestor (base w) (rgHead (rangeOf repo v))
-    base = rgBase . rangeOf repo
-
--- | Scenarios of a handful of versions, so that a replay has several pushes to
--- walk and several bases to tell apart.
-scenario :: Gen Scenario
-scenario = choose (2, 4) >>= scenarioOf
-
--- * What a push should get reported with
+-- | What a push should get reported with: a header naming both ends of it, and
+-- the range-diff of the rewrite it pushed.
+expected :: Push -> String
+expected p =
+  "### Range-diff for push "
+    ++ abbrev (evBefore (pshEv p))
+    ++ " → "
+    ++ abbrev (evAfter (pshEv p))
+    ++ "\n\n"
+    ++ format (pshRangeDiff p)
 
 -- | What a comment says, which is everything below whatever the tool hid at the
 -- top of it. An HTML comment renders as nothing, so what one holds is no part
@@ -104,21 +74,27 @@ scenario = choose (2, 4) >>= scenarioOf
 said :: String -> String
 said = intercalate "\n" . dropWhile ("<!--" `isPrefixOf`) . lines
 
--- | What a push should get reported with: a header naming both ends of it, and
--- the range-diff between the two versions of the branch, taken from the bases
--- the scenario built them on.
-expected :: Repo -> (Version, Version) -> IO String
-expected repo (v, w) = do
-  let Range oldBase oldHead = rangeOf repo v
-      Range newBase newHead = rangeOf repo w
-  commits <- RangeDiff.rangeDiff oldBase oldHead newBase newHead
-  pure $
-    "### Range-diff for push "
-      ++ take 7 (shaText oldHead)
-      ++ " → "
-      ++ take 7 (shaText newHead)
-      ++ "\n\n"
-      ++ format commits
+-- | Whether the tool can tell, for every rewrite in a plan, where the version
+-- before it began.
+unambiguous :: Plan -> Bool
+unambiguous = everyRewrite (\sh s -> not (ambiguous sh s))
+
+-- | Whether a rewrite leaves the tool no way of telling where the version
+-- before it began.
+--
+-- Say a version commits @A@ and then @B@ under the fork point, and the rewrite
+-- drops @B@: the fork point sinks onto @A@, which the older version had under
+-- its own fork point too. @A@ is an ancestor of the older head as well, and the
+-- newer of the two bases the pull request records, so the tool takes it as the
+-- base of both versions. The older version then reads as starting at @A@, with
+-- @B@ a commit of the branch rather than one under it.
+ambiguous :: Shape -> Step -> Bool
+ambiguous sh s = sunk < length (shBase sh) && all untouched (take sunk (stpBase s))
+  where
+    sunk = length (shBase (outcome sh s))
+
+    untouched Keep = True
+    untouched _ = False
 
 spec :: Spec
 spec =
@@ -126,34 +102,28 @@ spec =
   -- of them small.
   modifyMaxSuccess (const 20) $
     describe "run" $
-      it "posts the range-diff of every push once" $
-        forAllShrink scenario shrinkScenario $ \sc -> ioProperty $ withRepo sc $ \repo -> do
-          ok <- unambiguous repo sc
-          if not ok
-            then pure (property Discard)
-            else do
-              let vs = versions sc
-              pr <- newPullRequest repo
-              -- Each push is reported on as it happens, so the tool only ever
-              -- sees the timeline GitHub had recorded by then.
-              pushes <- fmap catMaybes . forM (zip vs (drop 1 vs)) $ \(v, w) -> do
-                pushed <- push pr repo w
-                forM pushed $ \ev -> do
-                  r <- report pr ev
-                  pure ((v, w), ev, r)
-              posted <- FakeGitHub.comments pr
-              -- The newest push, reported on a second time: the tool has said
-              -- this once already, so it has nothing left to say. A scenario
-              -- whose every version came out as the one before it describes no
-              -- push at all, and then there is nothing to report on again
-              -- either.
-              again <- forM (unsnoc pushes) $ \(_, (_, ev, _)) -> report pr ev
-              posted' <- FakeGitHub.comments pr
-              want <- mapM (\(p, _, _) -> expected repo p) pushes
-              coverage repo [p | (p, _, _) <- pushes] $
-                conjoin
-                  [ counterexample "one comment per push, saying what that push did" (map said posted === want),
-                    counterexample "every push reported" ([r | (_, _, r) <- pushes] === map (const Posted) pushes),
-                    counterexample "reporting a push again" (again === (AlreadyReported <$ unsnoc pushes)),
-                    counterexample "which posts nothing" (posted' === posted)
-                  ]
+      it "posts the range-diff of every push" $
+        -- Several pushes, so that the tool has several bases to tell apart and
+        -- a timeline it has to read more than the last event of. It works out
+        -- from that timeline where the old version began, so a scenario that
+        -- leaves it no way of telling is one this can't hold it to.
+        withRepo (2, 4) unambiguous $ \repo -> do
+          pr <- newPullRequest repo
+          -- Each push is reported on as it happens, so the tool only ever sees
+          -- the timeline GitHub had recorded by then.
+          pushes <- evolve repo (push pr)
+          posted <- FakeGitHub.comments pr
+          pure
+            . tabulate "base" (map pshBaseMoved pushes)
+            $ conjoin
+              [ counterexample "one comment per push, saying what that push did" (map said posted === map expected pushes),
+                counterexample "every push reported" (map pshReported pushes === map (const Posted) pushes)
+              ]
+
+-- | A pull request just opened on the repo, on the version the branch was
+-- initialized as. Both branches had to be pushed before there was a pull
+-- request to open, so it starts out knowing where each of them is.
+newPullRequest :: Repo -> IO PullRequest
+newPullRequest repo = do
+  Range base head' <- range repo
+  FakeGitHub.newPullRequest (repoDir repo) base head'
