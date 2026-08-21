@@ -1,7 +1,7 @@
 -- | Reporting a push on a PR, as the CLI drives it.
-module GhPostRangeDiff.Run (run, manual) where
+module GhPostRangeDiff.Run (run) where
 
-import Data.List (isInfixOf, nub, unsnoc)
+import Data.List (isInfixOf, nub)
 import GhPostRangeDiff.Git (CommitSha, abbrev, baseFor, fetch, revParse, shaText)
 import GhPostRangeDiff.GitHub (Ev (..), Ref (..))
 import GhPostRangeDiff.GitHub qualified as GitHub
@@ -41,12 +41,3 @@ run pr oldHead newHead = do
 
       let header = "### Range-diff for push " ++ abbrev oldHead ++ " → " ++ abbrev newHead
       GitHub.postComment pr (marker ++ "\n" ++ header ++ "\n\n" ++ format commits)
-
--- Manual use: no SHAs on the command line, so derive them from the most recent
--- force-push in the timeline and hand off to `run`.
-manual :: GitHub.Handle -> IO ()
-manual pr = do
-  heads <- filter ((== Head) . evRef) <$> GitHub.timeline pr
-  case unsnoc heads of
-    Nothing -> putStrLn "No force-push events on this PR. Nothing to diff."
-    Just (_, h) -> run pr (evBefore h) (evAfter h)
