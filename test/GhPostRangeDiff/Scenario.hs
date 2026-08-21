@@ -2,6 +2,7 @@
 module GhPostRangeDiff.Scenario
   ( Version (..),
     ChangeNo (..),
+    Committed (..),
     Change (..),
     Scenario (..),
     versions,
@@ -41,23 +42,28 @@ newtype Version = Version Int
 newtype ChangeNo = ChangeNo Int
   deriving (Eq, Show)
 
+-- | What one version of the branch commits for a change: the message it commits
+-- under, and the one line of its file we get to choose. Two versions that
+-- commit the same thing hold the same commit; anything else is that commit
+-- rewritten, whether the rewrite touched the message, the file, or both.
+data Committed = Committed
+  { cdMessage :: RangeDiff.CommitMessage,
+    cdLine :: String
+  }
+  deriving (Eq, Show)
+
 -- | One commit's life across every version of the branch: 'Nothing' where a
--- version doesn't carry it at all, and @Just l@ where it does, with @l@ the one
--- line of its file we get to choose. Two versions holding the same line are the
--- same commit; different lines are that commit rewritten.
+-- version doesn't carry it at all.
 --
 -- This is a "change" in the jujutsu sense: the stable identity of a commit, even
 -- as it is rewritten.
 --
 -- The list holds one state per version, so it is always 'scVersions' long.
-data Change = Change
-  { chStates :: [Maybe String],
-    chMessage :: RangeDiff.CommitMessage
-  }
+newtype Change = Change {chStates :: [Maybe Committed]}
   deriving (Show)
 
 -- | What one version makes of a change.
-stateAt :: Version -> Change -> Maybe String
+stateAt :: Version -> Change -> Maybe Committed
 stateAt (Version v) = (!! v) . chStates
 
 -- | A whole repo's worth of scenario. Each version commits its changes one
@@ -109,14 +115,22 @@ scenarioOf n = (Scenario n <$> baseChanges <*> sizedChanges) `suchThat` valid
       k <- frequency [(3, choose (1, 6)), (1, choose (10, 12))]
       vectorOf k (change n)
 
--- | One change over @n@ versions: a line it settles on, which most versions
--- keep, some rewrite, and some leave the commit out over entirely.
+-- | One change over @n@ versions: a commit it settles on, which most versions
+-- keep as it is, some reword, some amend, some do both to, and some leave out
+-- of the branch entirely.
 change :: Int -> Gen Change
-change n = Change <$> states <*> arbitrary
+change n = do
+  settled <- committed
+  Change <$> vectorOf n (frequency (states settled))
   where
-    states = do
-      settled <- line
-      vectorOf n (frequency [(3, pure (Just settled)), (1, Just <$> line), (1, pure Nothing)])
+    states settled =
+      [ (4, pure (Just settled)),
+        (1, Just . (\l -> settled {cdLine = l}) <$> line),
+        (1, Just . (\m -> settled {cdMessage = m}) <$> arbitrary),
+        (1, Just <$> committed),
+        (2, pure Nothing)
+      ]
+    committed = Committed <$> arbitrary <*> line
     line = getPrintableString <$> arbitrary
 
 -- | Shrink to another scenario we can build, smallest first: fewer versions,
@@ -138,19 +152,23 @@ dropVersion (Version v) (Scenario n baseChanges changes) =
 
 -- | Shrink one change, keeping one state per version.
 shrinkChange :: Change -> [Change]
-shrinkChange ch@(Change states message) =
-  [ch {chStates = settled} | settled <- unified, settled /= states]
-    ++ [ch {chStates = states'} | states' <- shrinkEach shrinkState states]
-    ++ [ch {chMessage = message'} | message' <- shrink message]
+shrinkChange (Change states) =
+  [Change settled | settled <- unified, settled /= states]
+    ++ [Change states' | states' <- shrinkEach shrinkState states]
   where
     -- Every version equal to the initial version: a commit that just sits
     -- there untouched is the simplest thing a change can do, and it is the
     -- only shrink that puts a commit back into a version that dropped it.
-    unified = [map (const (Just l)) states | l <- take 1 (catMaybes states)]
+    unified = [map (const (Just c)) states | c <- take 1 (catMaybes states)]
 
-    -- Only ever drop characters, never change them: the line stays printable
-    -- and stays one line, as 'change' generated it.
-    shrinkState s = [Just l | Just l0 <- [s], l <- shrinkList (const []) l0]
+    shrinkState s = [Just c | Just c0 <- [s], c <- shrinkCommitted c0]
+
+    -- The line only ever loses characters, never changes them, so it stays
+    -- printable and stays one line, as 'change' generated it. The message has a
+    -- shrinker of its own that keeps it committable.
+    shrinkCommitted c =
+      [c {cdLine = l} | l <- shrinkList (const []) (cdLine c)]
+        ++ [c {cdMessage = m} | m <- shrink (cdMessage c)]
 
 -- | Shrink one element at a time, leaving the list as long as it was.
 shrinkEach :: (a -> [a]) -> [a] -> [[a]]
@@ -172,16 +190,37 @@ body :: ChangeNo -> Int -> String
 body (ChangeNo n) k = "f" ++ show n ++ "-l" ++ show k
 
 -- | The interdiff git prints for a rewritten commit, as 'RangeDiff.rangeDiff'
--- should hand it back: de-indented, so its own +/- sit in column 0. It holds
--- the rewritten hunk header, the three lines of context a default @-U3@ diff
--- leaves before the change (the tail of the file's body), then the last line as
--- the old patch had it and as the new one has it.
-expectedInterdiff :: ChangeNo -> String -> String -> RangeDiff.Interdiff
-expectedInterdiff n a b =
-  RangeDiff.interdiff . unlines $
-    ["@@ " ++ file n ++ " (new)"]
-      ++ [" +" ++ body n k | k <- [6 .. 8]]
-      ++ ["-+" ++ a, "++" ++ b]
+-- should hand it back: de-indented, so its own +/- sit in column 0. A rewrite
+-- that reworded the commit gets a hunk over the metadata git shows a commit
+-- under, one that amended it gets a hunk over the patch, and one that did both
+-- gets both hunks, in that order.
+expectedInterdiff :: ChangeNo -> Committed -> Committed -> RangeDiff.Interdiff
+expectedInterdiff n a b = RangeDiff.interdiff (unlines (reworded ++ amended))
+  where
+    -- The message sits in a section of its own, indented by four, with the
+    -- author above it and the head of the patch below — three lines of context
+    -- either side, as a default @-U3@ diff leaves.
+    reworded
+      | cdMessage a == cdMessage b = []
+      | otherwise =
+          [ "@@ Metadata",
+            " Author: " ++ auName author ++ " <" ++ auEmail author ++ ">",
+            " ",
+            "  ## Commit message ##",
+            "-    " ++ RangeDiff.messageText (cdMessage a),
+            "+    " ++ RangeDiff.messageText (cdMessage b),
+            " ",
+            "  ## " ++ file n ++ " (new) ##",
+            " @@"
+          ]
+
+    -- Context here is the tail of the file's body, as the new patch adds it.
+    amended
+      | cdLine a == cdLine b = []
+      | otherwise =
+          ["@@ " ++ file n ++ " (new)"]
+            ++ [" +" ++ body n k | k <- [6 .. 8]]
+            ++ ["-+" ++ cdLine a, "++" ++ cdLine b]
 
 -- | A change's file, ending on the line the version carries. The body is long
 -- enough that rewriting that one line is a small fraction of the commit, which
@@ -189,6 +228,16 @@ expectedInterdiff n a b =
 -- treating them as an unrelated removal plus addition.
 contents :: ChangeNo -> String -> String
 contents n line = unlines ([body n k | k <- [1 .. 8]] ++ [line])
+
+-- | Who commits everything in the repo. The model needs it too: it is the one
+-- line of commit metadata a range-diff shows around a reworded message.
+data Author = Author
+  { auName :: String,
+    auEmail :: String
+  }
+
+author :: Author
+author = Author {auName = "t", auEmail = "t@t"}
 
 git :: [String] -> IO String
 git = Git.sh "git"
@@ -242,8 +291,8 @@ builtAt (Repo builts) (Version v) = builts !! v
 withRepo :: Scenario -> (Repo -> IO a) -> IO a
 withRepo sc act = withSystemTempDirectory "gh-post-range-diff" $ \dir -> withCurrentDirectory dir $ do
   _ <- git ["init", "-q"]
-  _ <- git ["config", "user.email", "t@t"]
-  _ <- git ["config", "user.name", "t"]
+  _ <- git ["config", "user.email", auEmail author]
+  _ <- git ["config", "user.name", auName author]
   -- How far git abbreviates a sha is its own business, and it varies with the
   -- size of the repo. Told not to abbreviate at all, `range-diff` prints the
   -- full shas, which are the ones the scenario knows its commits by.
@@ -270,7 +319,7 @@ withRepo sc act = withSystemTempDirectory "gh-post-range-diff" $ \dir -> withCur
   where
     commitChange v (n, ch) = case stateAt v ch of
       Nothing -> pure ()
-      Just line -> commit (file n) (contents n line) (RangeDiff.messageText (chMessage ch))
+      Just c -> commit (file n) (contents n (cdLine c)) (RangeDiff.messageText (cdMessage c))
 
 -- | Which change ended up as which commit on one version of the branch.
 -- `rev-list` is newest first, so it lines up with the scenario once reversed.

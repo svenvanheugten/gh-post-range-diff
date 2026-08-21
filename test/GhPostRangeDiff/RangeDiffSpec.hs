@@ -1,7 +1,7 @@
 module GhPostRangeDiff.RangeDiffSpec (spec) where
 
 import Data.List (sortOn)
-import Data.Maybe (isJust, mapMaybe)
+import Data.Maybe (fromMaybe, isJust, mapMaybe)
 import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.RangeDiff qualified as RangeDiff
 import GhPostRangeDiff.Scenario
@@ -14,8 +14,8 @@ import Test.QuickCheck (counterexample, forAllShrink, ioProperty, tabulate, (===
 data Fate
   = -- | committed identically by both versions (@=@)
     Kept
-  | -- | same message and file, different last line (@!@), which the two carry
-    Rewritten String String
+  | -- | reworded, amended, or both (@!@), as the two versions commit it
+    Rewritten Committed Committed
   | -- | committed by the old version only (@<@)
     Dropped
   | -- | committed by the new version only (@>@)
@@ -30,15 +30,18 @@ fate old new ch = case (stateAt old ch, stateAt new ch) of
   (Just _, Nothing) -> Just Dropped
   (Nothing, Just _) -> Just Introduced
 
--- | How that fate should be reported for the @n@th change, and which of the two
--- versions still has a commit to point at.
-reported :: Version -> Version -> ChangeNo -> Fate -> (RangeDiff.Change, Version)
+-- | How that fate should be reported for the @n@th change: what happened, which
+-- of the two versions still has a commit to point at, and which of them the
+-- message on the header line comes from. git takes that message from the old
+-- side of every pair it lines up, so a reworded commit is reported under the
+-- message it is being rewritten away from.
+reported :: Version -> Version -> ChangeNo -> Fate -> (RangeDiff.Change, Version, Version)
 reported old new n f = case f of
-  Kept -> (RangeDiff.Unchanged, new)
-  Rewritten a b -> (RangeDiff.Updated (expectedInterdiff n a b), new)
+  Kept -> (RangeDiff.Unchanged, new, new)
+  Rewritten a b -> (RangeDiff.Updated (expectedInterdiff n a b), new, old)
   -- A dropped commit only exists on the old side.
-  Dropped -> (RangeDiff.Removed, old)
-  Introduced -> (RangeDiff.Added, new)
+  Dropped -> (RangeDiff.Removed, old, old)
+  Introduced -> (RangeDiff.Added, new, new)
 
 -- | The marker git prints for a change between two versions, where it prints
 -- one. Only good for saying what a scenario covered; 'expectedCommits' is what
@@ -52,15 +55,31 @@ marker old new ch = pick <$> fate old new ch
       Dropped -> "<"
       Introduced -> ">"
 
+-- | What a rewrite rewrote, where the change was rewritten at all. Also only
+-- good for saying what a scenario covered.
+rewriteKind :: Version -> Version -> Change -> Maybe String
+rewriteKind old new ch = case fate old new ch of
+  Just (Rewritten a b) -> Just (kind (cdMessage a /= cdMessage b) (cdLine a /= cdLine b))
+  _ -> Nothing
+  where
+    kind True False = "reworded"
+    kind False True = "amended"
+    kind _ _ = "both"
+
 -- | The commits 'RangeDiff.rangeDiff' should report between two versions of the
 -- branch.
 expectedCommits :: Repo -> Scenario -> Version -> Version -> [RangeDiff.Commit]
 expectedCommits repo sc old new =
-  [ RangeDiff.Commit c (shaOf repo side n) (chMessage ch)
+  [ RangeDiff.Commit c (shaOf repo side n) (cdMessage (committed under n ch))
   | (n, ch) <- snd (regions sc),
     Just f <- [fate old new ch],
-    let (c, side) = reported old new n f
+    let (c, side, under) = reported old new n f
   ]
+  where
+    -- The version a commit is reported from always carries the change, or
+    -- 'fate' would not have named that side in the first place.
+    committed v n ch = fromMaybe (missing n v) (stateAt v ch)
+    missing (ChangeNo n) (Version v) = error ("change " ++ show n ++ " is not in version " ++ show v)
 
 -- | A range as the two revisions `git range-diff` takes it as.
 revs :: Range -> (String, String)
@@ -93,6 +112,10 @@ spec = describe "rangeDiff" $
         diff <- Git.rangeDiff oldBase oldHead newBase newHead
         pure
           . tabulate "markers" (mapMaybe (marker oldV newV) changes)
+          -- Whether the two ranges forked from one and the same commit is read
+          -- off the repo rather than guessed at, so the scenario can be told
+          -- what its base region did.
+          . tabulate "rewrites" (mapMaybe (rewriteKind oldV newV) changes)
           . tabulate "base" [if oldBase == newBase then "shared" else "moved"]
           . tabulate "commits on the larger side" [bucket (widest changes)]
           . counterexample ("range-diff:\n" ++ diff)
