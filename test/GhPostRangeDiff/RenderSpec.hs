@@ -5,7 +5,8 @@ module GhPostRangeDiff.RenderSpec (spec) where
 import Data.List (isInfixOf, stripPrefix)
 import Data.Maybe (mapMaybe)
 import GhPostRangeDiff.Gen ()
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), CommitMessage, CommitSha, Interdiff (interdiffText), commitMessage, commitSha, interdiff, shaText)
+import GhPostRangeDiff.Git (CommitSha, commitSha, shaText)
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), CommitMessage, Interdiff (interdiffText), commitMessage, interdiff)
 import GhPostRangeDiff.Render (format)
 import Test.Hspec
 import Test.QuickCheck

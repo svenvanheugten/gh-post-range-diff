@@ -81,10 +81,6 @@ expectedCommits repo sc old new =
     committed v n ch = fromMaybe (missing n v) (stateAt v ch)
     missing (ChangeNo n) (Version v) = error ("change " ++ show n ++ " is not in version " ++ show v)
 
--- | A range as the two revisions `git range-diff` takes it as.
-revs :: Range -> (String, String)
-revs (Range base tip) = (RangeDiff.shaText base, RangeDiff.shaText tip)
-
 -- | The push a scenario of two versions describes: the branch as it was, and as
 -- it is now.
 oldV, newV :: Version
@@ -104,8 +100,8 @@ spec = describe "rangeDiff" $
       -- A range-diff always only compares two scenarios.
       forAllShrink (scenarioOf 2) shrinkScenario $ \sc -> ioProperty $ withRepo sc $ \repo -> do
         let changes = map snd (snd (regions sc))
-            (oldBase, oldHead) = revs (rangeOf repo oldV)
-            (newBase, newHead) = revs (rangeOf repo newV)
+            Range oldBase oldHead = rangeOf repo oldV
+            Range newBase newHead = rangeOf repo newV
         commits <- RangeDiff.rangeDiff oldBase oldHead newBase newHead
         -- The unparsed range-diff is the first thing you want to look at when the
         -- model of git's output turns out to be the thing that is wrong.

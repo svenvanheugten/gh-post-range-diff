@@ -6,7 +6,8 @@
 module GhPostRangeDiff.Render (format) where
 
 import Data.List (group, intercalate)
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), interdiffText, messageText, shaText)
+import GhPostRangeDiff.Git (shaText)
+import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), interdiffText, messageText)
 
 -- | The longest run of consecutive backticks in a string. Used to size a code
 -- fence so it can't be closed early by backticks in the content.
