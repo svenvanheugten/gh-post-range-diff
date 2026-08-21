@@ -23,6 +23,7 @@ module GhPostRangeDiff.Scenario
   )
 where
 
+import Data.List (sort)
 import Data.Maybe (catMaybes, fromMaybe, isJust)
 import GhPostRangeDiff.Gen ()
 import GhPostRangeDiff.Git (CommitSha, knownSha, shaText)
@@ -105,11 +106,18 @@ valid sc@(Scenario n _ changes) =
 scenarioOf :: Int -> Gen Scenario
 scenarioOf n = (Scenario n <$> baseChanges <*> sizedChanges) `suchThat` valid
   where
-    -- Half the scenarios put nothing under the fork point, so every version
-    -- forks from the root commit and the base has plainly not moved. The other
-    -- half bury a change or three down there, which usually moves it, since a
-    -- change usually does something between one version and the next.
-    baseChanges = frequency [(1, pure []), (1, choose (1, 3) >>= flip vectorOf (change n))]
+    -- A third of the scenarios put nothing under the fork point, so every
+    -- version forks from the root commit and the base has plainly not moved. A
+    -- third bury a change or three down there, which usually moves the base by
+    -- a force-push, since a change usually does something between one version
+    -- and the next. The last third grow the base region instead, which moves it
+    -- by an ordinary push.
+    baseChanges =
+      frequency
+        [ (1, pure []),
+          (1, choose (1, 3) >>= flip vectorOf (change n)),
+          (1, growingBase n)
+        ]
 
     -- Mostly short, because every change of every version really is committed,
     -- but often enough into double digits to exercise the leading space git
@@ -129,13 +137,44 @@ change n = do
   where
     states settled =
       [ (4, pure (Just settled)),
-        (1, Just . (\l -> settled {cdLine = l}) <$> line),
+        (1, Just . (\l -> settled {cdLine = l}) <$> chosenLine),
         (1, Just . (\m -> settled {cdMessage = m}) <$> arbitrary),
         (1, Just <$> committed),
         (2, pure Nothing)
       ]
-    committed = Committed <$> arbitrary <*> line
-    line = getPrintableString <$> arbitrary
+
+-- | A commit a version could carry.
+committed :: Gen Committed
+committed = Committed <$> arbitrary <*> chosenLine
+
+-- | The one line of a change's file that a version gets to choose.
+chosenLine :: Gen String
+chosenLine = getPrintableString <$> arbitrary
+
+-- | A base region that only ever grows: every version buries the changes the
+-- one before it did under the fork point, committed exactly as they were, and
+-- now and then one more. That leaves each version's base an ancestor of the
+-- next one's, so the base moves by an ordinary push rather than by a
+-- force-push. GitHub records no event for such a push, so the tool has to work
+-- the old base out with @merge-base@ rather than read it off the timeline.
+--
+-- Growing is the only direction on offer. A base region that shrank again would
+-- leave a later base under an earlier head, which is the ambiguity
+-- "GhPostRangeDiff.RunSpec" throws a scenario out over.
+growingBase :: Int -> Gen [Change]
+growingBase n = do
+  m <- choose (1, 3)
+  -- The version each change is buried in, lowest change first, so that a change
+  -- is never buried before the one beneath it. A change buried in version @n@
+  -- never makes it into the base at all.
+  starts <- sort <$> vectorOf m (choose (0, n))
+  mapM buriedFrom starts
+  where
+    -- Absent until its version comes round, and committed exactly as it was
+    -- from there on.
+    buriedFrom v = do
+      c <- committed
+      pure (Change (replicate v Nothing ++ replicate (n - v) (Just c)))
 
 -- | Shrink to another scenario we can build, smallest first: fewer versions,
 -- then fewer changes, then simpler ones.
