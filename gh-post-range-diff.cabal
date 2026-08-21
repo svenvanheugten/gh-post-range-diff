@@ -35,6 +35,7 @@ library
     import:           defaults
     hs-source-dirs:   src
     exposed-modules:
+        GhPostRangeDiff.Comment
         GhPostRangeDiff.Git
         GhPostRangeDiff.GitHub
         GhPostRangeDiff.RangeDiff
