@@ -70,10 +70,50 @@ instance Arbitrary Step where
     [Step change' message | change' <- shrink change]
       ++ [Step change message' | message' <- shrink message]
 
--- | Does the scenario leave at least one commit on each branch? `git range-diff`
--- refuses an empty commit range, so it has to.
-bothSidesNonEmpty :: [Step] -> Bool
-bothSidesNonEmpty ss = any (onSide Old . stChange) ss && any (onSide New . stChange) ss
+-- | A whole repo's worth of scenario. The steps are committed one after another
+-- on each side of the fork; the first 'scBaseSteps' of them go under the fork
+-- point, so each side's base is its own tip once they are in, and the rest are
+-- the range `git range-diff` is handed. Whatever happens to a step in the base
+-- region therefore happens to the base itself: a branch whose base was rewritten
+-- under it is a scenario whose base region holds anything but 'Unchanged'.
+data Scenario = Scenario
+  { scBaseSteps :: [Step],
+    scSteps :: [Step]
+  }
+  deriving (Show)
+
+instance Arbitrary Scenario where
+  arbitrary = Scenario <$> baseSteps <*> sizedSteps
+    where
+      -- Half the scenarios put nothing under the fork point, so both ranges fork
+      -- from the root commit and the base has plainly not moved. The other half
+      -- bury a step or three down there, which all but always moves it, since
+      -- three changes in four are not 'Unchanged'.
+      baseSteps = frequency [(1, pure []), (1, choose (1, 3) >>= \n -> vectorOf n arbitrary)]
+
+      -- Mostly short, because every step really is committed, but often enough
+      -- into double digits to exercise the leading space git pads a single-digit
+      -- commit number out with once a range holds ten commits.
+      sizedSteps = do
+        n <- frequency [(3, choose (1, 6)), (1, choose (10, 12))]
+        vectorOf n arbitrary
+
+  shrink (Scenario baseSteps steps) =
+    [Scenario baseSteps' steps | baseSteps' <- shrink baseSteps]
+      ++ [Scenario baseSteps steps' | steps' <- shrink steps]
+
+-- | Number every step from one, so no two commits in the repo ever touch the
+-- same file, and hand back the base region and the range separately.
+regions :: Scenario -> ([(Int, Step)], [(Int, Step)])
+regions (Scenario baseSteps steps) =
+  splitAt (length baseSteps) (zip [1 ..] (baseSteps ++ steps))
+
+-- | Does the scenario leave at least one commit in each branch's range? `git
+-- range-diff` refuses an empty commit range, so it has to. The base region is
+-- free to be empty on either side; a side that commits nothing down there just
+-- forks from the root commit.
+bothSidesNonEmpty :: Scenario -> Bool
+bothSidesNonEmpty (Scenario _ ss) = any (onSide Old . stChange) ss && any (onSide New . stChange) ss
 
 -- | Which side of the fork we are talking about.
 data Side = Old | New
@@ -133,31 +173,43 @@ data Fixture = Fixture
   { fixCommits :: [RangeDiff.Commit],
     -- | the same range-diff as text, kept only so a failure can show it
     fixDiff :: String,
+    -- | whether the two ranges ended up forking from one and the same commit,
+    -- read off the repo rather than guessed at, so the scenario can be told
+    -- what its base region did
+    fixSharedBase :: Bool,
     fixOldShas, fixNewShas :: [(Int, String)]
   }
 
 -- | 'rangeDiff' shells out to git in the current directory, so the whole fixture
 -- runs with the throwaway repo as cwd.
-buildFixture :: [Step] -> IO Fixture
-buildFixture steps = withSystemTempDirectory "gh-post-range-diff" $ \dir -> withCurrentDirectory dir $ do
+buildFixture :: Scenario -> IO Fixture
+buildFixture sc = withSystemTempDirectory "gh-post-range-diff" $ \dir -> withCurrentDirectory dir $ do
   _ <- git ["init", "-q"]
   _ <- git ["config", "user.email", "t@t"]
   _ <- git ["config", "user.name", "t"]
 
-  commit "base.txt" "shared\n" "base"
-  base <- Git.revParse "HEAD"
+  -- Every branch has to start somewhere, and a scenario with an empty base
+  -- region starts both of them here, on one and the same commit.
+  commit "root.txt" "root\n" "root"
+  root <- Git.revParse "HEAD"
 
-  let commitAll side = mapM_ (uncurry (commitStep side)) (zip [1 ..] steps)
-  _ <- git ["checkout", "-q", "-b", "old"]
-  commitAll Old
-  _ <- git ["checkout", "-q", "-b", "new", base]
-  commitAll New
+  let (baseSteps, steps) = regions sc
+      -- Commit a side's steps from the root up, stopping at the end of the base
+      -- region to note the commit the range should be taken from.
+      buildSide side branch = do
+        _ <- git ["checkout", "-q", "-b", branch, root]
+        mapM_ (uncurry (commitStep side)) baseSteps
+        base <- Git.revParse "HEAD"
+        mapM_ (uncurry (commitStep side)) steps
+        pure base
+  oldBase <- buildSide Old "old"
+  newBase <- buildSide New "new"
 
-  commits <- mapM expandSha =<< RangeDiff.rangeDiff base "old" base "new"
+  commits <- mapM expandSha =<< RangeDiff.rangeDiff oldBase "old" newBase "new"
   -- The unparsed range-diff is the first thing you want to look at when the model
   -- of git's output below turns out to be the thing that is wrong.
-  diff <- Git.rangeDiff base "old" base "new"
-  Fixture commits diff <$> sideShas base Old steps <*> sideShas base New steps
+  diff <- Git.rangeDiff oldBase "old" newBase "new"
+  Fixture commits diff (oldBase == newBase) <$> sideShas oldBase Old steps <*> sideShas newBase New steps
 
 -- | Replace the abbreviated sha git printed with the full sha it stands for, so
 -- it can be compared with the one the scenario expects. How far git abbreviates
@@ -174,10 +226,10 @@ knownSha s = fromMaybe (error ("not a sha: " ++ s)) (RangeDiff.commitSha s)
 
 -- | Which change ended up as which commit on a branch. `rev-list` is newest
 -- first, so it lines up with the scenario once reversed.
-sideShas :: String -> Side -> [Step] -> IO [(Int, String)]
+sideShas :: String -> Side -> [(Int, Step)] -> IO [(Int, String)]
 sideShas base side steps = do
   shas <- reverse . lines <$> git ["rev-list", base ++ ".." ++ ref]
-  pure (zip [n | (n, s) <- zip [1 ..] steps, onSide side (stChange s)] shas)
+  pure (zip [n | (n, s) <- steps, onSide side (stChange s)] shas)
   where
     ref = case side of
       Old -> "old"
@@ -198,8 +250,8 @@ interdiffLines n p =
 
 -- | The commit 'rangeDiff' should report for every step. Which order git reports
 -- them in is git's business, so this is only ever compared as a set; see 'canonical'.
-expected :: [(Int, String)] -> [(Int, String)] -> [Step] -> [RangeDiff.Commit]
-expected oldShas newShas steps = [entry n st | (n, st) <- zip [1 ..] steps]
+expected :: [(Int, String)] -> [(Int, String)] -> [(Int, Step)] -> [RangeDiff.Commit]
+expected oldShas newShas steps = [entry n st | (n, st) <- steps]
   where
     entry n st = RangeDiff.Commit change (sha shas n) (stMessage st)
       where
@@ -225,22 +277,17 @@ spec = describe "rangeDiff" $
   -- Every case shells out to build a real repo, so keep the number of them small.
   modifyMaxSuccess (const 20) $
     it "reads a change, a sha from the surviving side and a de-indented interdiff per commit" $
-      forAllShrink scenario (filter bothSidesNonEmpty . shrink) $ \steps -> ioProperty $ do
-        Fixture {..} <- buildFixture steps
+      forAllShrink scenario (filter bothSidesNonEmpty . shrink) $ \sc -> ioProperty $ do
+        let steps = snd (regions sc)
+        Fixture {..} <- buildFixture sc
         pure
-          . tabulate "changes" (map (marker . stChange) steps)
-          . tabulate "commits on the larger side" [bucket (widest steps)]
+          . tabulate "changes" (map (marker . stChange . snd) steps)
+          . tabulate "base" [if fixSharedBase then "shared" else "moved"]
+          . tabulate "commits on the larger side" [bucket (widest (map snd steps))]
           . counterexample ("range-diff:\n" ++ fixDiff)
           $ canonical fixCommits === canonical (expected fixOldShas fixNewShas steps)
   where
-    -- A whole repo's worth of steps, one per commit. Mostly short, because every
-    -- one of them really is committed, but often enough into double digits to
-    -- exercise the leading space git pads a single-digit commit number out with
-    -- once a range holds ten commits.
-    scenario = sizedSteps `suchThat` bothSidesNonEmpty
-    sizedSteps = do
-      n <- frequency [(3, choose (1, 6)), (1, choose (10, 12))]
-      vectorOf n arbitrary
+    scenario = arbitrary `suchThat` bothSidesNonEmpty
 
     widest ss = maximum [length (filter (onSide side . stChange) ss) | side <- [Old, New]]
     bucket n = if n >= 10 then "ten or more" else "fewer than ten"
