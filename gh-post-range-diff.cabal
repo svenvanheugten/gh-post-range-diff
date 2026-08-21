@@ -65,6 +65,7 @@ test-suite spec
         GhPostRangeDiff.Gen
         GhPostRangeDiff.RangeDiffSpec
         GhPostRangeDiff.RenderSpec
+        GhPostRangeDiff.Scenario
     build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
     build-depends:
         base       >=4.20 && <5,
