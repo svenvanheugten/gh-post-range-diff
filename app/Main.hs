@@ -1,10 +1,10 @@
 module Main where
 
 import Data.List (unsnoc)
-import GhPostRangeDiff.Git (commitSha)
+import GhPostRangeDiff.Git (CommitSha, abbrev, commitSha)
 import GhPostRangeDiff.GitHub (Ev (..), Ref (..), gh)
 import GhPostRangeDiff.GitHub qualified as GitHub
-import GhPostRangeDiff.Run (run)
+import GhPostRangeDiff.Run (Reported (..), run)
 import System.Environment (getArgs)
 
 main :: IO ()
@@ -18,15 +18,24 @@ main = do
     [pr, before, after]
       | Just b <- commitSha before,
         Just a <- commitSha after ->
-          run (gh pr) b a
+          report (gh pr) b a
       | otherwise -> manual (gh pr)
     _ -> error "usage: gh-post-range-diff <pr> [<before-sha> <after-sha>]"
 
 -- Manual use: no SHAs on the command line, so derive them from the most recent
--- force-push in the timeline and hand off to `run`.
+-- force-push in the timeline and report on that one.
 manual :: GitHub.Handle -> IO ()
 manual pr = do
   heads <- filter ((== Head) . evRef) <$> GitHub.timeline pr
   case unsnoc heads of
     Nothing -> putStrLn "No force-push events on this PR. Nothing to diff."
-    Just (_, h) -> run pr (evBefore h) (evAfter h)
+    Just (_, h) -> report pr (evBefore h) (evAfter h)
+
+-- Report on a push, and say so where the run had nothing to do.
+report :: GitHub.Handle -> CommitSha -> CommitSha -> IO ()
+report pr oldHead newHead = do
+  reported <- run pr oldHead newHead
+  case reported of
+    Posted -> pure ()
+    AlreadyReported ->
+      putStrLn ("Already reported on " ++ abbrev oldHead ++ ".." ++ abbrev newHead ++ ". Nothing to do.")
