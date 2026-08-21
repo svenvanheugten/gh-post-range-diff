@@ -12,7 +12,7 @@ import Test.QuickCheck.Modifiers (getPrintableString)
 -- which sits mid-line and so must not be read as a code fence.
 --
 -- Trimmed of trailing whitespace and never empty, because
--- "GhPostRangeDiff.Scenario" really does commit these. @git commit -m@ cleans the subject up with
+-- "GhPostRangeDiff.Repo" really does commit these. @git commit -m@ cleans the subject up with
 -- @--cleanup=whitespace@, which strips trailing whitespace, and refuses an
 -- empty message.
 instance Arbitrary CommitMessage where
