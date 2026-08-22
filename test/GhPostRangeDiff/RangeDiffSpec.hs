@@ -53,7 +53,7 @@ readBack rw = do
   pure
     . tabulate "markers" (map (marker . cmChange) want)
     . tabulate "rewrites" (concatMap rewrites want)
-    . tabulate "base" [base]
+    . tabulate "base" [show base]
     . tabulate "commits on the larger side" [bucket (length want)]
     . counterexample ("range-diff:\n" ++ diff)
     $ commits === want
