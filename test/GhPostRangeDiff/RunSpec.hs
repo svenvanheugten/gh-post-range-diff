@@ -17,7 +17,6 @@ import GhPostRangeDiff.Run (Reported (..), run)
 import System.Directory (withCurrentDirectory)
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
-import Test.Hspec.QuickCheck (modifyMaxSuccess)
 import Test.QuickCheck (conjoin, counterexample, tabulate, (===))
 
 -- | One version of the branch pushed: what the push was, what it should get
@@ -96,27 +95,24 @@ ambiguous sh s = sunk < length (shBase sh) && all untouched (take sunk (stpBase 
 
 spec :: Spec
 spec =
-  -- Every case builds a repo and then a checkout per push, so keep the number
-  -- of them small.
-  modifyMaxSuccess (const 20) $
-    describe "run" $
-      it "posts the range-diff of every push" $
-        -- Several pushes, so that the tool has several bases to tell apart and
-        -- a timeline it has to read more than the last event of. It works out
-        -- from that timeline where the old version began, so a scenario that
-        -- leaves it no way of telling is one this can't hold it to.
-        withRepo (2, 4) unambiguous $ \repo -> do
-          pr <- newPullRequest repo
-          -- Each push is reported on as it happens, so the tool only ever sees
-          -- the timeline GitHub had recorded by then.
-          pushes <- evolve repo (push pr)
-          posted <- FakeGitHub.comments pr
-          pure
-            . tabulate "base" (map pshBaseMoved pushes)
-            $ conjoin
-              [ counterexample "one comment per push, saying what that push did" (map said posted === map expected pushes),
-                counterexample "every push reported" (map pshReported pushes === map (const Posted) pushes)
-              ]
+  describe "run" $
+    it "posts the range-diff of every push" $
+      -- Several pushes, so that the tool has several bases to tell apart and
+      -- a timeline it has to read more than the last event of. It works out
+      -- from that timeline where the old version began, so a scenario that
+      -- leaves it no way of telling is one this can't hold it to.
+      withRepo (2, 4) unambiguous $ \repo -> do
+        pr <- newPullRequest repo
+        -- Each push is reported on as it happens, so the tool only ever sees
+        -- the timeline GitHub had recorded by then.
+        pushes <- evolve repo (push pr)
+        posted <- FakeGitHub.comments pr
+        pure
+          . tabulate "base" (map pshBaseMoved pushes)
+          $ conjoin
+            [ counterexample "one comment per push, saying what that push did" (map said posted === map expected pushes),
+              counterexample "every push reported" (map pshReported pushes === map (const Posted) pushes)
+            ]
 
 -- | A pull request just opened on the repo, on the version the branch was
 -- initialized as. Both branches had to be pushed before there was a pull
