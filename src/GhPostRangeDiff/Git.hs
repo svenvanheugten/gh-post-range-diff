@@ -6,7 +6,7 @@ module GhPostRangeDiff.Git
     knownSha,
     abbrev,
     git,
-    isAncestor,
+    isAncestorOf,
     baseFor,
     fetch,
     revParse,
@@ -50,8 +50,9 @@ abbrev = take 7 . shaText
 git :: [String] -> IO String
 git args = readProcess "git" args ""
 
-isAncestor :: CommitSha -> CommitSha -> IO Bool
-isAncestor a b = do
+-- | Does @a@ come before @b@ on the same line of history?
+isAncestorOf :: CommitSha -> CommitSha -> IO Bool
+isAncestorOf a b = do
   (code, _, _) <- readProcessWithExitCode "git" ["merge-base", "--is-ancestor", shaText a, shaText b] ""
   pure (code == ExitSuccess)
 
@@ -75,7 +76,7 @@ rangeDiff oldBase oldHead newBase newHead =
 -- tip: the point where `head` forked from today's base line.
 baseFor :: CommitSha -> CommitSha -> [CommitSha] -> IO CommitSha
 baseFor currentBase headCommit cands = do
-  found <- findM (`isAncestor` headCommit) (reverse cands)
+  found <- findM (`isAncestorOf` headCommit) (reverse cands)
   case found of
     Just b -> pure b
     Nothing -> knownSha . trim <$> git ["merge-base", shaText currentBase, shaText headCommit]

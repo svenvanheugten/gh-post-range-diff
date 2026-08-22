@@ -130,7 +130,7 @@ baseMovement :: CommitSha -> CommitSha -> IO String
 baseMovement was now
   | was == now = pure "shared"
   | otherwise = do
-      fastForward <- Git.isAncestor was now
+      fastForward <- was `Git.isAncestorOf` now
       pure (if fastForward then "advanced" else "forced")
 
 -- | One rewrite of the branch, as it happened: where the branch was, where it
