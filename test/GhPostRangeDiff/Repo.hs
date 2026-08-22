@@ -360,10 +360,6 @@ data Author = Author
 author :: Author
 author = Author {auName = "t", auEmail = "t@t"}
 
--- | Run a git command in whichever repo is current, and hand back its output.
-git :: [String] -> IO String
-git = Git.sh "git"
-
 -- | Run jj, handing back what it printed on stdout. jj narrates what it
 -- rewrote on stderr, which is noise while the build goes to plan and the whole
 -- story when it doesn't, so it is kept back until a command fails.
@@ -392,7 +388,7 @@ initRepo = do
   -- How far git abbreviates a sha is its own business, and it varies with the
   -- size of the repo. Told not to abbreviate at all, `range-diff` prints the
   -- full shas, which are the ones the scenario knows its commits by.
-  _ <- git ["config", "core.abbrev", "no"]
+  _ <- Git.git ["config", "core.abbrev", "no"]
   pure ()
   where
     identity = [("user.name", auName author), ("user.email", auEmail author)]
