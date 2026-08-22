@@ -3,7 +3,7 @@
 -- letting the tool loose on the pull request the way the action does.
 module GhPostRangeDiff.RunSpec (spec) where
 
-import Data.List (intercalate, isPrefixOf)
+import Data.List (intercalate, isPrefixOf, tails)
 import GhPostRangeDiff.FakeGitHub (PullRequest)
 import GhPostRangeDiff.FakeGitHub qualified as FakeGitHub
 import GhPostRangeDiff.Git (abbrev)
@@ -17,7 +17,7 @@ import GhPostRangeDiff.Run (Reported (..), run)
 import System.Directory (withCurrentDirectory)
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
-import Test.QuickCheck (conjoin, counterexample, tabulate, (===))
+import Test.QuickCheck (conjoin, counterexample, cover, tabulate, (===))
 
 -- | One version of the branch pushed: what the push was, what it should get
 -- reported with, and what reporting on it came to.
@@ -25,7 +25,7 @@ data Push = Push
   { pshEv :: Ev,
     -- | what the base under the branch did to get here, which is only good for
     -- saying what a scenario covered
-    pshBaseMoved :: String,
+    pshBaseMoved :: Movement,
     pshRangeDiff :: [RangeDiff.Commit],
     pshReported :: Reported
   }
@@ -93,6 +93,26 @@ ambiguous sh s = sunk < length (shBase sh) && all untouched (take sunk (stpBase 
     untouched Keep = True
     untouched _ = False
 
+-- | Whether what the base did over a scenario's pushes holds this shape:
+--
+-- > […, Forced, …, Advanced, Stayed*, Advanced, …]
+--
+-- Left to right: a force-push of the base; then any number of pushes doing
+-- whatever they like; then a push that advanced the base; then any number that
+-- left it where it was; then one more that advanced it. Anything at all may
+-- come before and after.
+--
+-- Reproduces the bug we fixed in
+-- https://github.com/svenvanheugten/gh-post-range-diff/pull/56.
+forcedThenAdvancedTwice :: [Movement] -> Bool
+forcedThenAdvancedTwice ms = or [advancedTwice later | Forced : later <- tails ms]
+  where
+    advancedTwice later = or [thenAdvanced rest | Advanced : rest <- tails later]
+
+    thenAdvanced rest = case dropWhile (== Stayed) rest of
+      Advanced : _ -> True
+      _ -> False
+
 spec :: Spec
 spec =
   describe "run" $
@@ -107,8 +127,10 @@ spec =
         -- the timeline GitHub had recorded by then.
         pushes <- evolve repo (push pr)
         posted <- FakeGitHub.comments pr
+        let moved = map pshBaseMoved pushes
         pure
-          . tabulate "base" (map pshBaseMoved pushes)
+          . tabulate "base" (map show moved)
+          . cover 2 (forcedThenAdvancedTwice moved) "a base only the merge-base can place"
           $ conjoin
             [ counterexample "one comment per push, saying what that push did" (map said posted === map expected pushes),
               counterexample "every push reported" (map pshReported pushes === map (const Posted) pushes)
