@@ -15,6 +15,7 @@ module GhPostRangeDiff.Repo
     evolve,
     Range (..),
     range,
+    Movement (..),
     baseMovement,
   )
 where
@@ -123,15 +124,24 @@ range repo = do
 
 -- | What the base under the branch did between where it was and where it is.
 -- Only good for saying what a scenario covered.
---
--- A base that advanced got there by an ordinary push, which leaves no
--- force-push event to reconstruct it from; a base that was forced leaves one.
-baseMovement :: CommitSha -> CommitSha -> IO String
+data Movement
+  = -- | it is where it was: the version was pushed onto the base the one before
+    -- it was pushed onto
+    Stayed
+  | -- | it grew, so it got where it is by an ordinary push, which leaves no
+    -- force-push event to reconstruct it from
+    Advanced
+  | -- | it moved off the line it was on, which takes a force-push, and that
+    -- leaves an event behind
+    Forced
+  deriving (Eq, Show)
+
+baseMovement :: CommitSha -> CommitSha -> IO Movement
 baseMovement was now
-  | was == now = pure "shared"
+  | was == now = pure Stayed
   | otherwise = do
       fastForward <- was `Git.isAncestorOf` now
-      pure (if fastForward then "advanced" else "forced")
+      pure (if fastForward then Advanced else Forced)
 
 -- | One rewrite of the branch, as it happened: where the branch was, where it
 -- is now, and the range-diff from the one version to the other.

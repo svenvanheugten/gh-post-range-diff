@@ -68,15 +68,17 @@ rangeDiff oldBase oldHead newBase newHead =
   where
     range a b = shaText a ++ ".." ++ shaText b
 
--- The base for `head`: the most recently recorded base tip that is still an
--- ancestor of it. `cands` needs to be in chronological order (current tip last).
---
--- If none is an ancestor (e.g. the base advanced through ordinary pushes, which
--- emits no force-push events) fall back to the merge-base with the current base
--- tip: the point where `head` forked from today's base line.
+-- Figure out the point at which `headCommit` forked from the base branch.
+-- 'forcePushesToBase` needs to be in chronological order (current tip last).
 baseFor :: CommitSha -> CommitSha -> [CommitSha] -> IO CommitSha
-baseFor currentBase headCommit cands = do
-  found <- findM (`isAncestorOf` headCommit) (reverse cands)
-  case found of
-    Just b -> pure b
-    Nothing -> knownSha . trim <$> git ["merge-base", shaText currentBase, shaText headCommit]
+baseFor currentBase headCommit forcePushesToBase = do
+  mBase <- mergeBase currentBase headCommit
+  maybeTlBase <- findM (`isAncestorOf` headCommit) (reverse forcePushesToBase)
+  case maybeTlBase of
+    Nothing -> pure mBase
+    Just tlBase -> do
+      mBaseTooFarBack <- mBase `isAncestorOf` tlBase
+      pure (if mBaseTooFarBack then tlBase else mBase)
+
+mergeBase :: CommitSha -> CommitSha -> IO CommitSha
+mergeBase a b = knownSha . trim <$> git ["merge-base", shaText a, shaText b]

@@ -99,7 +99,19 @@ steps n sh
 -- the fork point, and something to the stretch above it, and between them
 -- something a scenario can hold.
 mutations :: Shape -> Gen Step
-mutations sh = (Step <$> stretchPlan (shBase sh) <*> stretchPlan (shBranch sh)) `suchThat` pushable sh
+mutations sh = (Step <$> basePlan (shBase sh) <*> stretchPlan (shBranch sh)) `suchThat` pushable sh
+
+-- | What the next version does to the stretch under the fork point.
+--
+-- A base gets where it is in one of two ways, and the pull request's timeline
+-- is where they differ: a force-push moves it off the line it was on and is
+-- recorded, while an ordinary push only ever puts commits on top of it and is
+-- recorded nowhere at all. Both need to be exercised equally often, since they
+-- are handled differently in the tool.
+basePlan :: [Committed] -> Gen [Action]
+basePlan cs = frequency [(1, ordinaryPush), (1, stretchPlan cs)]
+  where
+    ordinaryPush = (map (const Keep) cs ++) <$> insertions
 
 -- | What the next version does to a stretch of branch: something to every
 -- commit that is there, and now and then a commit or two that weren't,
@@ -125,8 +137,11 @@ stretchPlan cs = do
     -- often than it used to, and where it does it now and then brings more than
     -- one. Every commit put in is another commit to build, so runs any commoner
     -- than this would cost a scenario real time.
-    inserted = frequency [(9, pure []), (1, several)]
-    several = (:) <$> (Insert <$> committed) <*> frequency [(2, pure []), (1, several)]
+    inserted = frequency [(9, pure []), (1, insertions)]
+
+-- | A run of commits put into one gap: one, and now and then more.
+insertions :: Gen [Action]
+insertions = (:) <$> (Insert <$> committed) <*> frequency [(2, pure []), (1, insertions)]
 
 -- | A commit rewritten: reworded, amended, or both. It really is rewritten,
 -- since a rewrite that left the commit as it was is not one.
