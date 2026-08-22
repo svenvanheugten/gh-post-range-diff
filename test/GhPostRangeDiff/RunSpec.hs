@@ -47,15 +47,13 @@ push pr rw = do
   moved <- baseMovement (rgBase (rwWas rw)) base
   reported <-
     withSystemTempDirectory "gh-post-range-diff-checkout" $ \dir -> withCurrentDirectory dir $ do
-      _ <- git ["init", "-q"]
-      _ <- git ["remote", "add", "origin", FakeGitHub.origin pr]
+      _ <- Git.git ["init", "-q"]
+      _ <- Git.git ["remote", "add", "origin", FakeGitHub.origin pr]
       -- The scenario knows its commits by their full shas, so the range-diff
       -- taken here has to name them the same way the scenario's repo does.
-      _ <- git ["config", "core.abbrev", "no"]
+      _ <- Git.git ["config", "core.abbrev", "no"]
       run (FakeGitHub.handle pr) (evBefore ev) (evAfter ev)
   pure (Push ev moved (rwRangeDiff rw) reported)
-  where
-    git = Git.sh "git"
 
 -- | What a push should get reported with: a header naming both ends of it, and
 -- the range-diff of the rewrite it pushed.
