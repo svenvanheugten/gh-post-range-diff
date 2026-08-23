@@ -105,7 +105,7 @@ move pr ref sha = do
     then pure Nothing
     else do
       let ev = GitHub.Ev ref before sha
-      fastForward <- inOrigin pr (Git.isAncestor before sha)
+      fastForward <- inOrigin pr (before `Git.isAncestorOf` sha)
       unless fastForward $ modifyIORef' (prTimeline pr) (++ [ev])
       place pr ref sha
       writeIORef (tip pr ref) sha
