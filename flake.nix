@@ -34,9 +34,16 @@
           pkgs.gh
         ];
 
+        # The test suite builds real repos: it rewrites them with jujutsu and
+        # reads them back with git.
+        testDeps = [
+          pkgs.git
+          pkgs.jujutsu
+        ];
+
         gh-post-range-diff = hsLib.overrideCabal (hsPkgs.callCabal2nix "gh-post-range-diff" ./. { }) (old: {
           doCheck = true;
-          testToolDepends = (old.testToolDepends or [ ]) ++ [ pkgs.git ];
+          testToolDepends = (old.testToolDepends or [ ]) ++ testDeps;
         });
       in
       {
@@ -49,7 +56,8 @@
             hsPkgs.hlint
             treefmtEval.config.build.wrapper
           ]
-          ++ runtimeDeps;
+          ++ runtimeDeps
+          ++ testDeps;
 
           shellHook = ''
             echo "Run:    cabal run gh-post-range-diff -- <pr-number>"
