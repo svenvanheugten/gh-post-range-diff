@@ -86,7 +86,9 @@
             '';
 
         checks = {
-          build = gh-post-range-diff;
+          # Same derivation `nix build` produces, so the test suite is not
+          # built and run a second time.
+          build = self.packages.${system}.default;
 
           lint = pkgs.runCommand "hlint" { nativeBuildInputs = [ hsPkgs.hlint ]; } ''
             cd ${self}
