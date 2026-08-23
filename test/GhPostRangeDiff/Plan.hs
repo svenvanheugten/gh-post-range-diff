@@ -104,12 +104,20 @@ mutations sh = (Step <$> stretchPlan (shBase sh) <*> stretchPlan (shBranch sh)) 
 -- | What the next version does to a stretch of branch: something to every
 -- commit that is there, and now and then a commit or two that weren't,
 -- wherever they fit.
+--
+-- Half the time it leaves every commit that is there exactly as it is and only
+-- puts commits on top of them. That's especially interesting when for the base
+-- branch, since fast-forwards on the base branch aren't recorded on the GitHub
+-- timeline, and need to be handled differently by the tool. As such, we want it
+-- to happen relatively often.
 stretchPlan :: [Committed] -> Gen [Action]
-stretchPlan cs = do
-  bottom <- inserted
-  rest <- mapM step cs
-  pure (bottom ++ concat rest)
+stretchPlan cs = frequency [(1, onTop), (1, throughout)]
   where
+    onTop = (map (const Keep) cs ++) <$> insertions
+    throughout = do
+      bottom <- inserted
+      rest <- mapM step cs
+      pure (bottom ++ concat rest)
     step c = (:) <$> fate c <*> inserted
     fate c =
       frequency
@@ -125,8 +133,11 @@ stretchPlan cs = do
     -- often than it used to, and where it does it now and then brings more than
     -- one. Every commit put in is another commit to build, so runs any commoner
     -- than this would cost a scenario real time.
-    inserted = frequency [(9, pure []), (1, several)]
-    several = (:) . Insert <$> committed <*> frequency [(2, pure []), (1, several)]
+    inserted = frequency [(9, pure []), (1, insertions)]
+
+-- | A run of commits put into one gap: one, and now and then more.
+insertions :: Gen [Action]
+insertions = (:) . Insert <$> committed <*> frequency [(2, pure []), (1, insertions)]
 
 -- | A commit rewritten: reworded, amended, or both. It really is rewritten,
 -- since a rewrite that left the commit as it was is not one.
