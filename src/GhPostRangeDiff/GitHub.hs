@@ -10,8 +10,8 @@ module GhPostRangeDiff.GitHub
 where
 
 import Data.List.Extra (trim)
-import GhPostRangeDiff.Git (CommitSha, commitSha, sh)
-import System.Process (callProcess)
+import GhPostRangeDiff.Git (CommitSha, commitSha)
+import System.Process (callProcess, readProcess)
 
 -- | Which of the pull request's two branches a force-push moved: the branch
 -- under review, or the branch it is targeting.
@@ -82,10 +82,14 @@ query =
       "}"
     ]
 
+-- Run a `gh` command and hand back what it printed on stdout.
+ghRead :: [String] -> IO String
+ghRead args = readProcess "gh" args ""
+
 -- The repository the `gh` CLI is pointed at, as (owner, name).
 ownerRepo :: IO (String, String)
 ownerRepo = do
-  nameWithOwner <- trim <$> sh "gh" ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]
+  nameWithOwner <- trim <$> ghRead ["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"]
   case break (== '/') nameWithOwner of
     (owner, _ : repo) -> pure (owner, repo)
     _ -> error ("unexpected repository name: " ++ nameWithOwner)
@@ -95,8 +99,7 @@ ghTimeline :: String -> IO [Ev]
 ghTimeline pr = do
   (owner, repo) <- ownerRepo
   raw <-
-    sh
-      "gh"
+    ghRead
       [ "api",
         "graphql",
         "-f",
@@ -115,11 +118,11 @@ ghTimeline pr = do
 
 -- The branch the PR is targeting.
 ghBaseRef :: String -> IO String
-ghBaseRef pr = trim <$> sh "gh" ["pr", "view", pr, "--json", "baseRefName", "-q", ".baseRefName"]
+ghBaseRef pr = trim <$> ghRead ["pr", "view", pr, "--json", "baseRefName", "-q", ".baseRefName"]
 
 -- Every comment body on the PR, concatenated.
 ghComments :: String -> IO String
-ghComments pr = sh "gh" ["pr", "view", pr, "--json", "comments", "-q", ".comments[].body"]
+ghComments pr = ghRead ["pr", "view", pr, "--json", "comments", "-q", ".comments[].body"]
 
 ghPostComment :: String -> String -> IO ()
 ghPostComment pr body = callProcess "gh" ["pr", "comment", pr, "--body", body]

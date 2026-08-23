@@ -72,7 +72,7 @@ inOrigin pr = withCurrentDirectory (prOrigin pr)
 -- Put one of the two branches on a sha.
 place :: PullRequest -> GitHub.Ref -> CommitSha -> IO ()
 place pr ref sha =
-  inOrigin pr $ void (Git.sh "git" ["branch", "-f", branch ref, shaText sha])
+  inOrigin pr $ void (Git.git ["branch", "-f", branch ref, shaText sha])
 
 -- | The 'GitHub.Handle' onto it, standing in for the `gh` CLI.
 handle :: PullRequest -> GitHub.Handle

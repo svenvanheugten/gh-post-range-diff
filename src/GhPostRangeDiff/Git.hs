@@ -5,7 +5,7 @@ module GhPostRangeDiff.Git
     commitSha,
     knownSha,
     abbrev,
-    sh,
+    git,
     isAncestor,
     baseFor,
     fetch,
@@ -45,11 +45,10 @@ knownSha s = fromMaybe (error ("not a sha: " ++ s)) (commitSha s)
 abbrev :: CommitSha -> String
 abbrev = take 7 . shaText
 
-sh :: String -> [String] -> IO String
-sh cmd args = readProcess cmd args ""
-
+-- | Run a git command in whichever repo is current, and hand back what it
+-- printed on stdout.
 git :: [String] -> IO String
-git = sh "git"
+git args = readProcess "git" args ""
 
 isAncestor :: CommitSha -> CommitSha -> IO Bool
 isAncestor a b = do
