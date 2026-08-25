@@ -10,6 +10,7 @@
 module GhPostRangeDiff.Repo
   ( Repo,
     repoDir,
+    repoGit,
     withRepo,
     Rewrite (..),
     evolve,
@@ -27,6 +28,7 @@ import Data.List.Extra (trim)
 import Data.Maybe (fromMaybe, isNothing)
 import GhPostRangeDiff.Git (CommitSha, knownSha, shaText)
 import GhPostRangeDiff.Git qualified as Git
+import GhPostRangeDiff.GitCommand (git)
 import GhPostRangeDiff.Plan (Action (..), Committed (..), Plan (..), Step (..), plan, shrinkPlan)
 import GhPostRangeDiff.RangeDiff qualified as RangeDiff
 import System.Directory (withCurrentDirectory)
@@ -71,6 +73,11 @@ data Repo = Repo
     rpState :: IORef State
   }
 
+-- | The repo behind a git handle, which is what everything reading it with git
+-- goes through.
+repoGit :: Repo -> Git.Handle
+repoGit = Git.git . repoDir
+
 -- | Plan a scenario of between @lo@ and @hi@ rewrites, make a repo holding the
 -- first version of its branch, and run the property in it. Everything the
 -- property goes on to do runs with that repo as the working directory.
@@ -84,7 +91,7 @@ withRepo bounds fit act =
   forAllShrink (plan bounds `suchThat` fit) (filter fit . shrinkPlan) $ \p ->
     ioProperty $ withSystemTempDirectory "gh-post-range-diff" $ \dir ->
       withCurrentDirectory dir $ do
-        initRepo
+        initRepo dir
         root <- commitRoot
         st <- newIORef (State root 0 [] [])
         let repo = Repo dir (plSteps p) st
@@ -136,11 +143,11 @@ data Movement
     Forced
   deriving (Eq, Show)
 
-baseMovement :: CommitSha -> CommitSha -> IO Movement
-baseMovement was now
+baseMovement :: Git.Handle -> CommitSha -> CommitSha -> IO Movement
+baseMovement repo was now
   | was == now = pure Stayed
   | otherwise = do
-      fastForward <- was `Git.isAncestorOf` now
+      fastForward <- Git.isAncestorOf repo was now
       pure (if fastForward then Advanced else Forced)
 
 -- | One rewrite of the branch, as it happened: where the branch was, where it
@@ -410,14 +417,13 @@ message m = "--message=" ++ RangeDiff.messageText m
 -- | A repo to rewrite a branch in. It is colocated, so that everything reading
 -- it afterwards — `git range-diff`, and the checkout the tool runs in — is
 -- reading an ordinary git repo.
-initRepo :: IO ()
-initRepo = do
+initRepo :: FilePath -> IO ()
+initRepo dir = do
   _ <- jj ["git", "init", "--colocate", "."]
   -- How far git abbreviates a sha is its own business, and it varies with the
   -- size of the repo. Told not to abbreviate at all, `range-diff` prints the
   -- full shas, which are the ones the scenario knows its commits by.
-  _ <- Git.git ["config", "core.abbrev", "no"]
-  pure ()
+  git dir ["config", "core.abbrev", "no"]
 
 -- | The commit every version of the branch grows from, and the one a version
 -- with nothing under its fork point forks off. jj made a commit to initialise

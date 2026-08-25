@@ -9,12 +9,12 @@ module GhPostRangeDiff.FakeGitHub
   )
 where
 
-import Control.Monad (unless, void)
+import Control.Monad (unless)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
 import GhPostRangeDiff.Git (CommitSha, shaText)
 import GhPostRangeDiff.Git qualified as Git
+import GhPostRangeDiff.GitCommand (git)
 import GhPostRangeDiff.GitHub qualified as GitHub
-import System.Directory (withCurrentDirectory)
 
 data PullRequest = PullRequest
   { -- | the repo the pull request is on
@@ -58,21 +58,18 @@ newPullRequest dir base head' = do
 origin :: PullRequest -> FilePath
 origin = prOrigin
 
+-- The repo it is on, behind a git handle.
+repo :: PullRequest -> Git.Handle
+repo = Git.git . prOrigin
+
 -- Where one of the two branches is now.
 tip :: PullRequest -> GitHub.Ref -> IORef CommitSha
 tip pr GitHub.Base = prBaseTip pr
 tip pr GitHub.Head = prHeadTip pr
 
--- Run something in the repo the pull request is on, wherever the caller
--- happened to be. Everything here that reaches for git goes through it, so
--- there is no working directory a caller has to have put itself in first.
-inOrigin :: PullRequest -> IO a -> IO a
-inOrigin pr = withCurrentDirectory (prOrigin pr)
-
 -- Put one of the two branches on a sha.
 place :: PullRequest -> GitHub.Ref -> CommitSha -> IO ()
-place pr ref sha =
-  inOrigin pr $ void (Git.git ["branch", "-f", branch ref, shaText sha])
+place pr ref sha = git (prOrigin pr) ["branch", "-f", branch ref, shaText sha]
 
 -- | The 'GitHub.Handle' onto it, standing in for the `gh` CLI.
 handle :: PullRequest -> GitHub.Handle
@@ -105,7 +102,7 @@ move pr ref sha = do
     then pure Nothing
     else do
       let ev = GitHub.Ev ref before sha
-      fastForward <- inOrigin pr (before `Git.isAncestorOf` sha)
+      fastForward <- Git.isAncestorOf (repo pr) before sha
       unless fastForward $ modifyIORef' (prTimeline pr) (++ [ev])
       place pr ref sha
       writeIORef (tip pr ref) sha

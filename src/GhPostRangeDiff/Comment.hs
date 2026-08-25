@@ -4,7 +4,8 @@ module GhPostRangeDiff.Comment (comment) where
 
 import Control.Monad.Extra (andM, findM, notM)
 import Data.List (nub)
-import GhPostRangeDiff.Git (CommitSha, abbrev, fetch, isAncestorOf, mergeBase, revParse, shaText)
+import GhPostRangeDiff.Git (CommitSha, abbrev)
+import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.GitHub (Ev (..), Ref (..))
 import GhPostRangeDiff.GitHub qualified as GitHub
 import GhPostRangeDiff.RangeDiff (rangeDiff)
@@ -13,8 +14,8 @@ import GhPostRangeDiff.Render (format)
 -- | Report on the push oldHead..newHead: a header naming both ends of it, and
 -- the range-diff between the version of the branch it replaced and the one it
 -- left behind.
-comment :: GitHub.Handle -> CommitSha -> CommitSha -> IO String
-comment pr oldHead newHead = do
+comment :: Git.Handle -> GitHub.Handle -> CommitSha -> CommitSha -> IO String
+comment repo pr oldHead newHead = do
   base <- GitHub.baseRef pr
   -- Every recorded base tip, in chronological order, for base reconstruction.
   forcePushesToBase <-
@@ -22,13 +23,7 @@ comment pr oldHead newHead = do
       <$> GitHub.timeline pr
 
   -- Fetch current base tip, both heads, and every historical base oid.
-  --
-  -- refs/rd/base is a scratch ref holding the fetched base tip. We need it
-  -- because without a destination the tip only lands in FETCH_HEAD, which
-  -- this same fetch also fills with the heads and every base oid, so we
-  -- couldn't pick the base tip back out to rev-parse on the next line.
-  fetch $ (base ++ ":refs/rd/base") : map shaText (oldHead : newHead : forcePushesToBase)
-  newBaseTip <- revParse "refs/rd/base"
+  newBaseTip <- Git.fetch repo base (oldHead : newHead : forcePushesToBase)
   (b1, b2) <-
     if null forcePushesToBase
       then do
@@ -42,7 +37,10 @@ comment pr oldHead newHead = do
             (reverse forcePushesToBase)
         b1 <- maybe (mergeBase newBaseTip oldHead) pure lostAncestorOfOldHead
         pure (b1, newBaseTip)
-  commits <- rangeDiff b1 oldHead b2 newHead
+  commits <- rangeDiff repo b1 oldHead b2 newHead
 
   let header = "### Range-diff for push " ++ abbrev oldHead ++ " → " ++ abbrev newHead
   pure (header ++ "\n\n" ++ format commits)
+  where
+    isAncestorOf = Git.isAncestorOf repo
+    mergeBase = Git.mergeBase repo
