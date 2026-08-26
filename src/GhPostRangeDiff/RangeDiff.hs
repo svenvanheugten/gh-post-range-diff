@@ -117,6 +117,6 @@ parse = map (uncurry mkCommit) . chunks . lines
 
 -- | Line up @oldBase..oldHead@ against @newBase..newHead@: one 'Commit' per
 -- commit in either range, saying what happened to it.
-rangeDiff :: CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
-rangeDiff oldBase oldHead newBase newHead =
-  parse <$> Git.rangeDiff oldBase oldHead newBase newHead
+rangeDiff :: Git.Handle -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
+rangeDiff repo oldBase oldHead newBase newHead =
+  parse <$> Git.rangeDiff repo oldBase oldHead newBase newHead

@@ -39,17 +39,17 @@ spec = describe "rangeDiff" $
       -- The bases a range-diff is taken over come from the scenario, which
       -- knows them, so there is no plan this can't be asked of.
       withRepo (1, 1) (const True) $
-        \repo -> conjoin <$> evolve repo readBack
+        \repo -> conjoin <$> evolve repo (readBack (repoGit repo))
 
 -- | What one rewrite of the branch reads back as, which should be what the
 -- scenario says it did to every commit, and nothing else.
-readBack :: Rewrite -> IO Property
-readBack rw = do
-  commits <- RangeDiff.rangeDiff oldBase oldHead newBase newHead
+readBack :: Git.Handle -> Rewrite -> IO Property
+readBack repo rw = do
+  commits <- RangeDiff.rangeDiff repo oldBase oldHead newBase newHead
   -- The unparsed range-diff is the first thing you want to look at when the
   -- model of git's output turns out to be the thing that is wrong.
-  diff <- Git.rangeDiff oldBase oldHead newBase newHead
-  base <- baseMovement oldBase newBase
+  diff <- Git.rangeDiff repo oldBase oldHead newBase newHead
+  base <- baseMovement repo oldBase newBase
   pure
     . tabulate "markers" (map (marker . cmChange) want)
     . tabulate "rewrites" (concatMap rewrites want)

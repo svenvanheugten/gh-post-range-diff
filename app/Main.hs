@@ -2,6 +2,7 @@ module Main where
 
 import Data.List (unsnoc)
 import GhPostRangeDiff.Git (CommitSha, abbrev, commitSha)
+import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.GitHub (Ev (..), Ref (..), gh)
 import GhPostRangeDiff.GitHub qualified as GitHub
 import GhPostRangeDiff.Run (Reported (..), run)
@@ -31,10 +32,11 @@ manual pr = do
     Nothing -> putStrLn "No force-push events on this PR. Nothing to diff."
     Just (_, h) -> report pr (evBefore h) (evAfter h)
 
--- Report on a push, and say so where the run had nothing to do.
+-- Report on a push, and say so where the run had nothing to do. Whatever the
+-- range-diff takes is read out of the repo the CLI was run in.
 report :: GitHub.Handle -> CommitSha -> CommitSha -> IO ()
 report pr oldHead newHead = do
-  reported <- run pr oldHead newHead
+  reported <- run (Git.git ".") pr oldHead newHead
   case reported of
     Posted -> pure ()
     AlreadyReported ->
