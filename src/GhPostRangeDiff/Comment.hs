@@ -19,11 +19,11 @@ comment repo pr oldHead newHead = do
   base <- GitHub.baseRef pr
   -- Every recorded base tip, in chronological order, for base reconstruction.
   forcePushesToBase <-
-    nub . concatMap (\e -> [evBefore e, evAfter e]) . filter ((== Base) . evRef)
+    concatMap (\e -> [evBefore e, evAfter e]) . filter ((== Base) . evRef)
       <$> GitHub.timeline pr
 
   -- Fetch current base tip, both heads, and every historical base oid.
-  newBaseTip <- Git.fetch repo base (oldHead : newHead : forcePushesToBase)
+  newBaseTip <- Git.fetch repo base (nub (oldHead : newHead : forcePushesToBase))
   (b1, b2) <-
     if null forcePushesToBase
       then do
