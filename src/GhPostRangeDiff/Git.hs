@@ -1,5 +1,4 @@
--- | The commit shas the tool passes around, the `git` invocations it needs, and
--- the base reconstruction on top of them.
+-- | The commit shas the tool passes around, and the `git` invocations it needs.
 module GhPostRangeDiff.Git
   ( CommitSha (shaText),
     commitSha,
@@ -7,14 +6,13 @@ module GhPostRangeDiff.Git
     abbrev,
     git,
     isAncestorOf,
-    baseFor,
+    mergeBase,
     fetch,
     revParse,
     rangeDiff,
   )
 where
 
-import Control.Monad.Extra (findM)
 import Data.Char (isDigit)
 import Data.List.Extra (trim)
 import Data.Maybe (fromMaybe)
@@ -68,17 +66,6 @@ rangeDiff oldBase oldHead newBase newHead =
   where
     range a b = shaText a ++ ".." ++ shaText b
 
--- Figure out the point at which `headCommit` forked from the base branch.
--- 'forcePushesToBase` needs to be in chronological order (current tip last).
-baseFor :: CommitSha -> CommitSha -> [CommitSha] -> IO CommitSha
-baseFor currentBase headCommit forcePushesToBase = do
-  mBase <- mergeBase currentBase headCommit
-  maybeTlBase <- findM (`isAncestorOf` headCommit) (reverse forcePushesToBase)
-  case maybeTlBase of
-    Nothing -> pure mBase
-    Just tlBase -> do
-      mBaseTooFarBack <- mBase `isAncestorOf` tlBase
-      pure (if mBaseTooFarBack then tlBase else mBase)
-
+-- | The best common ancestor of @a@ and @b@.
 mergeBase :: CommitSha -> CommitSha -> IO CommitSha
 mergeBase a b = knownSha . trim <$> git ["merge-base", shaText a, shaText b]

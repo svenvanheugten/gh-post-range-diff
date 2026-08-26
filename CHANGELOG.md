@@ -17,3 +17,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Fix incorrect parsing of ranges of ten or more commits (https://github.com/svenvanheugten/gh-post-range-diff/pull/38)
 - Fix consecutive spaces being collapsed to a single space in commit messages (https://github.com/svenvanheugten/gh-post-range-diff/pull/39)
 - Fix commits of the base branch being reported as commits of the pull request when the base branch was force-pushed and then advanced twice by an ordinary push (https://github.com/svenvanheugten/gh-post-range-diff/pull/56)
+- Fix commits of the base branch being reported as commits of the pull request when the base branch was force-pushed back onto a commit it already held (https://github.com/svenvanheugten/gh-post-range-diff/pull/58)

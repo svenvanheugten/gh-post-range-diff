@@ -2,8 +2,9 @@
 -- push did, and the Markdown saying so.
 module GhPostRangeDiff.Comment (comment) where
 
+import Control.Monad.Extra (andM, findM, notM)
 import Data.List (nub)
-import GhPostRangeDiff.Git (CommitSha, abbrev, baseFor, fetch, revParse, shaText)
+import GhPostRangeDiff.Git (CommitSha, abbrev, fetch, isAncestorOf, mergeBase, revParse, shaText)
 import GhPostRangeDiff.GitHub (Ev (..), Ref (..))
 import GhPostRangeDiff.GitHub qualified as GitHub
 import GhPostRangeDiff.RangeDiff (rangeDiff)
@@ -16,7 +17,7 @@ comment :: GitHub.Handle -> CommitSha -> CommitSha -> IO String
 comment pr oldHead newHead = do
   base <- GitHub.baseRef pr
   -- Every recorded base tip, in chronological order, for base reconstruction.
-  baseOids <-
+  forcePushesToBase <-
     nub . concatMap (\e -> [evBefore e, evAfter e]) . filter ((== Base) . evRef)
       <$> GitHub.timeline pr
 
@@ -26,11 +27,21 @@ comment pr oldHead newHead = do
   -- because without a destination the tip only lands in FETCH_HEAD, which
   -- this same fetch also fills with the heads and every base oid, so we
   -- couldn't pick the base tip back out to rev-parse on the next line.
-  fetch $ (base ++ ":refs/rd/base") : map shaText (oldHead : newHead : baseOids)
+  fetch $ (base ++ ":refs/rd/base") : map shaText (oldHead : newHead : forcePushesToBase)
   newBaseTip <- revParse "refs/rd/base"
-  let cands = baseOids ++ [newBaseTip] -- current tip is newest, so it goes last
-  b1 <- baseFor newBaseTip oldHead cands
-  b2 <- baseFor newBaseTip newHead cands
+  (b1, b2) <-
+    if null forcePushesToBase
+      then do
+        b1 <- mergeBase newBaseTip oldHead
+        b2 <- mergeBase newBaseTip newHead
+        pure (b1, b2)
+      else do
+        lostAncestorOfOldHead <-
+          findM
+            (\tl -> andM [tl `isAncestorOf` oldHead, notM (tl `isAncestorOf` newBaseTip)])
+            (reverse forcePushesToBase)
+        b1 <- maybe (mergeBase newBaseTip oldHead) pure lostAncestorOfOldHead
+        pure (b1, newBaseTip)
   commits <- rangeDiff b1 oldHead b2 newHead
 
   let header = "### Range-diff for push " ++ abbrev oldHead ++ " → " ++ abbrev newHead
