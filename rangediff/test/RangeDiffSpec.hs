@@ -1,13 +1,13 @@
 -- | Reading the range-diff of one rewrite of a branch: build a repo, rewrite
 -- the branch in it once, and check that what `git range-diff` is read as says
 -- what that rewrite did.
-module GhPostRangeDiff.RangeDiffSpec (spec) where
+module RangeDiffSpec (spec) where
 
 import Data.List (isPrefixOf)
-import GhPostRangeDiff.Git qualified as Git
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), interdiffText)
-import GhPostRangeDiff.RangeDiff qualified as RangeDiff
-import GhPostRangeDiff.Repo
+import RangeDiff (Change (..), Commit (..), interdiffText)
+import RangeDiff qualified
+import RangeDiff.Test.Git qualified as Test.Git
+import RangeDiff.Test.Repo
 import Test.Hspec
 import Test.Hspec.QuickCheck (modifyMaxSuccess)
 import Test.QuickCheck (Property, conjoin, counterexample, tabulate, (===))
@@ -39,16 +39,16 @@ spec = describe "rangeDiff" $
       -- The bases a range-diff is taken over come from the scenario, which
       -- knows them, so there is no plan this can't be asked of.
       withRepo (1, 1) (const True) $
-        \repo -> conjoin <$> evolve repo (readBack (repoGit repo))
+        \repo -> conjoin <$> evolve repo (readBack repo)
 
 -- | What one rewrite of the branch reads back as, which should be what the
 -- scenario says it did to every commit, and nothing else.
-readBack :: Git.Handle -> Rewrite -> IO Property
+readBack :: Repo -> Rewrite -> IO Property
 readBack repo rw = do
-  commits <- RangeDiff.rangeDiff repo oldBase oldHead newBase newHead
+  commits <- RangeDiff.rangeDiff (repoRangeDiff repo) oldBase oldHead newBase newHead
   -- The unparsed range-diff is the first thing you want to look at when the
   -- model of git's output turns out to be the thing that is wrong.
-  diff <- Git.rangeDiff repo oldBase oldHead newBase newHead
+  diff <- Test.Git.rangeDiff (repoDir repo) oldBase oldHead newBase newHead
   base <- baseMovement repo oldBase newBase
   pure
     . tabulate "markers" (map (marker . cmChange) want)

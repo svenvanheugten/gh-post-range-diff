@@ -31,6 +31,58 @@ common defaults
     ghc-options:
         -Werror -Wall -Wcompat -Wredundant-constraints -Wunused-packages
 
+-- Taking a range-diff, and reading what one says. Knows nothing of pull
+-- requests, of GitHub, or of the tool built on top of it, so it can only be
+-- depended on the one way round.
+library rangediff
+    import:           defaults
+    hs-source-dirs:   rangediff/src
+    exposed-modules:
+        RangeDiff
+        RangeDiff.CommitSha
+
+    build-depends:
+        base    >=4.20 && <5,
+        process >=1.6  && <1.7,
+
+-- What it takes to try `rangediff` against real repos: a scenario of rewrites,
+-- planned and then carried out. Written for the range-diff tests, and used by
+-- the tool's tests too, which is as far as the dependency goes: nothing here
+-- knows about `GhPostRangeDiff` either.
+library rangediff-test-support
+    import:           defaults
+    hs-source-dirs:   rangediff/testlib
+    exposed-modules:
+        RangeDiff.Test.Gen
+        RangeDiff.Test.Git
+        RangeDiff.Test.Plan
+        RangeDiff.Test.Repo
+
+    build-depends:
+        base       >=4.20 && <5,
+        directory  >=1.3  && <1.4,
+        extra      >=1.7  && <2,
+        process    >=1.6  && <1.7,
+        QuickCheck >=2.14 && <3,
+        temporary  >=1.3  && <1.4,
+        gh-post-range-diff:rangediff,
+
+-- Builds real repos, rewriting them with jujutsu and reading them with git, so
+-- it needs both `jj` and `git` on PATH at run time.
+test-suite rangediff-spec
+    import:           defaults
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   rangediff/test
+    main-is:          Spec.hs
+    other-modules:
+        RangeDiffSpec
+    build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
+    build-depends:
+        base       >=4.20 && <5,
+        hspec      >=2.10 && <3,
+        QuickCheck >=2.14 && <3,
+        gh-post-range-diff:{rangediff, rangediff-test-support},
+
 library
     import:           defaults
     hs-source-dirs:   src
@@ -38,7 +90,6 @@ library
         GhPostRangeDiff.Comment
         GhPostRangeDiff.Git
         GhPostRangeDiff.GitHub
-        GhPostRangeDiff.RangeDiff
         GhPostRangeDiff.Render
         GhPostRangeDiff.Run
 
@@ -46,6 +97,7 @@ library
         base    >=4.20 && <5,
         process >=1.6  && <1.7,
         extra   >=1.7  && <2,
+        gh-post-range-diff:rangediff,
 
 executable gh-post-range-diff
     import:           defaults
@@ -55,6 +107,7 @@ executable gh-post-range-diff
     build-depends:
         base    >=4.20 && <5,
         gh-post-range-diff,
+        gh-post-range-diff:rangediff,
 
 -- Builds real repos, rewriting them with jujutsu and reading them with git, so
 -- it needs both `jj` and `git` on PATH at run time.
@@ -65,20 +118,13 @@ test-suite spec
     main-is:          Spec.hs
     other-modules:
         GhPostRangeDiff.FakeGitHub
-        GhPostRangeDiff.Gen
-        GhPostRangeDiff.GitCommand
-        GhPostRangeDiff.Plan
-        GhPostRangeDiff.RangeDiffSpec
         GhPostRangeDiff.RenderSpec
-        GhPostRangeDiff.Repo
         GhPostRangeDiff.RunSpec
     build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
     build-depends:
         base       >=4.20 && <5,
-        directory  >=1.3  && <1.4,
-        extra      >=1.7  && <2,
         hspec      >=2.10 && <3,
-        process    >=1.6  && <1.7,
         QuickCheck >=2.14 && <3,
         temporary  >=1.3  && <1.4,
         gh-post-range-diff,
+        gh-post-range-diff:{rangediff, rangediff-test-support},

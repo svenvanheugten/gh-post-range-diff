@@ -3,9 +3,10 @@ module GhPostRangeDiff.Run (Reported (..), run) where
 
 import Data.List (isInfixOf)
 import GhPostRangeDiff.Comment (comment)
-import GhPostRangeDiff.Git (CommitSha, shaText)
 import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.GitHub qualified as GitHub
+import RangeDiff qualified
+import RangeDiff.CommitSha (CommitSha, shaText)
 
 -- Hidden marker identifying this exact push (before..after). Lets us run the
 -- program multiple times without duplicating comments.
@@ -21,12 +22,12 @@ data Reported = Posted | AlreadyReported
 -- Report on the push oldHead..newHead: post what there is to say about it as a
 -- PR comment, under the marker of that push, unless the marker says we already
 -- have.
-run :: Git.Handle -> GitHub.Handle -> CommitSha -> CommitSha -> IO Reported
-run repo pr oldHead newHead = do
+run :: Git.Handle -> RangeDiff.Handle -> GitHub.Handle -> CommitSha -> CommitSha -> IO Reported
+run repo rd pr oldHead newHead = do
   posted <- GitHub.comments pr
   if marker oldHead newHead `isInfixOf` posted
     then pure AlreadyReported
     else do
-      body <- comment repo pr oldHead newHead
+      body <- comment repo rd pr oldHead newHead
       GitHub.postComment pr (marker oldHead newHead ++ "\n" ++ body)
       pure Posted

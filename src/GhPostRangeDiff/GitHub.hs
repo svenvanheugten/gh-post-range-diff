@@ -10,7 +10,7 @@ module GhPostRangeDiff.GitHub
 where
 
 import Data.List.Extra (trim)
-import GhPostRangeDiff.Git (CommitSha, commitSha)
+import RangeDiff.CommitSha (CommitSha, commitSha)
 import System.Process (callProcess, readProcess)
 
 -- | Which of the pull request's two branches a force-push moved: the branch

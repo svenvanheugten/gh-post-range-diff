@@ -92,7 +92,7 @@
 
           lint = pkgs.runCommand "hlint" { nativeBuildInputs = [ hsPkgs.hlint ]; } ''
             cd ${self}
-            hlint src app test
+            hlint src app test rangediff
             touch $out
           '';
 

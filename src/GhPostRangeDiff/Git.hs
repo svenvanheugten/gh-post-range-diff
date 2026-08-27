@@ -1,41 +1,18 @@
--- | The commit shas the tool passes around, and the repo it reads them out of,
--- behind a handle, so that it can be mocked in the tests. The one
--- implementation that talks to a real repo is 'git', which is that repo's
--- directory and the `git` invocations it takes to read it.
+-- | The repo the tool takes its range-diffs in, behind a handle, so that it can
+-- be mocked in the tests. The one implementation that talks to a real repo is
+-- 'git', which is that repo's directory and the `git` invocations it takes to
+-- read it.
 module GhPostRangeDiff.Git
-  ( CommitSha (shaText),
-    commitSha,
-    knownSha,
-    abbrev,
+  ( abbrev,
     Handle (..),
     git,
   )
 where
 
-import Data.Char (isDigit)
 import Data.List.Extra (trim)
-import Data.Maybe (fromMaybe)
+import RangeDiff.CommitSha (CommitSha, knownSha, shaText)
 import System.Exit (ExitCode (..))
 import System.Process (callProcess, readProcess, readProcessWithExitCode)
-
--- | A commit sha, whether abbreviated or written out in full.
-newtype CommitSha = CommitSha {shaText :: String}
-  deriving (Eq, Show)
-
--- | Read a sha, rejecting anything that isn't one. Git abbreviates to at least
--- four hex digits and never past the full forty, and prints them in lowercase.
-commitSha :: String -> Maybe CommitSha
-commitSha s
-  | n >= 4, n <= 40, all isHex s = Just (CommitSha s)
-  | otherwise = Nothing
-  where
-    n = length s
-    isHex c = isDigit c || c `elem` ['a' .. 'f']
-
--- | Read a sha we already know to be one, because git or GitHub just printed it
--- as one.
-knownSha :: String -> CommitSha
-knownSha s = fromMaybe (error ("not a sha: " ++ s)) (commitSha s)
 
 -- | A sha cut down to the seven digits people read commits by. Only for
 -- showing: it is git's own default abbreviation, not necessarily unambiguous.
@@ -51,10 +28,7 @@ data Handle = Handle
     -- | Does @a@ come before @b@ on the same line of history?
     isAncestorOf :: CommitSha -> CommitSha -> IO Bool,
     -- | The best common ancestor of @a@ and @b@.
-    mergeBase :: CommitSha -> CommitSha -> IO CommitSha,
-    -- | Line up @oldBase..oldHead@ against @newBase..newHead@, as
-    -- `git range-diff` prints it.
-    rangeDiff :: CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO String
+    mergeBase :: CommitSha -> CommitSha -> IO CommitSha
   }
 
 -- | The repo in @dir@, as the `git` CLI reaches it.
@@ -63,8 +37,7 @@ git dir =
   Handle
     { fetch = gitFetch dir,
       isAncestorOf = gitIsAncestorOf dir,
-      mergeBase = gitMergeBase dir,
-      rangeDiff = gitRangeDiff dir
+      mergeBase = gitMergeBase dir
     }
 
 -- Run a git command in the repo in @dir@, and hand back what it printed on
@@ -95,12 +68,6 @@ gitIsAncestorOf dir a b = do
 
 gitMergeBase :: FilePath -> CommitSha -> CommitSha -> IO CommitSha
 gitMergeBase dir a b = knownSha . trim <$> command dir ["merge-base", shaText a, shaText b]
-
-gitRangeDiff :: FilePath -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO String
-gitRangeDiff dir oldBase oldHead newBase newHead =
-  command dir ["range-diff", range oldBase oldHead, range newBase newHead]
-  where
-    range a b = shaText a ++ ".." ++ shaText b
 
 -- The commit a revision names.
 revParse :: FilePath -> String -> IO CommitSha

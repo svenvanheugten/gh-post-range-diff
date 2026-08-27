@@ -1,11 +1,13 @@
 module Main where
 
 import Data.List (unsnoc)
-import GhPostRangeDiff.Git (CommitSha, abbrev, commitSha)
+import GhPostRangeDiff.Git (abbrev)
 import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.GitHub (Ev (..), Ref (..), gh)
 import GhPostRangeDiff.GitHub qualified as GitHub
 import GhPostRangeDiff.Run (Reported (..), run)
+import RangeDiff qualified
+import RangeDiff.CommitSha (CommitSha, commitSha)
 import System.Environment (getArgs)
 
 main :: IO ()
@@ -36,7 +38,7 @@ manual pr = do
 -- range-diff takes is read out of the repo the CLI was run in.
 report :: GitHub.Handle -> CommitSha -> CommitSha -> IO ()
 report pr oldHead newHead = do
-  reported <- run (Git.git ".") pr oldHead newHead
+  reported <- run (Git.git ".") (RangeDiff.git ".") pr oldHead newHead
   case reported of
     Posted -> pure ()
     AlreadyReported ->

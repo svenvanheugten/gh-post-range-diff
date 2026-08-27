@@ -2,15 +2,15 @@
 -- rewrites it.
 --
 -- What happens to the repo is not decided here: it is drawn as a
--- "GhPostRangeDiff.Plan", which is planned in full before the repo exists.
+-- "RangeDiff.Test.Plan", which is planned in full before the repo exists.
 -- 'withRepo' draws a plan and builds a repo holding the first version of its
 -- branch; 'evolve' then carries out every rewrite the plan holds. An evolve
 -- knows what each commit was rewritten into, which is what a range-diff says,
 -- so it can hand one back.
-module GhPostRangeDiff.Repo
+module RangeDiff.Test.Repo
   ( Repo,
     repoDir,
-    repoGit,
+    repoRangeDiff,
     withRepo,
     Rewrite (..),
     evolve,
@@ -26,11 +26,10 @@ import Data.IORef (IORef, atomicModifyIORef', modifyIORef', newIORef, readIORef)
 import Data.List (find, intercalate, unsnoc)
 import Data.List.Extra (trim)
 import Data.Maybe (fromMaybe, isNothing)
-import GhPostRangeDiff.Git (CommitSha, knownSha, shaText)
-import GhPostRangeDiff.Git qualified as Git
-import GhPostRangeDiff.GitCommand (git)
-import GhPostRangeDiff.Plan (Action (..), Committed (..), Plan (..), Step (..), plan, shrinkPlan)
-import GhPostRangeDiff.RangeDiff qualified as RangeDiff
+import RangeDiff qualified
+import RangeDiff.CommitSha (CommitSha, knownSha, shaText)
+import RangeDiff.Test.Git (git, isAncestorOf)
+import RangeDiff.Test.Plan (Action (..), Committed (..), Plan (..), Step (..), plan, shrinkPlan)
 import System.Directory (withCurrentDirectory)
 import System.Exit (ExitCode (..))
 import System.IO.Temp (withSystemTempDirectory)
@@ -73,10 +72,10 @@ data Repo = Repo
     rpState :: IORef State
   }
 
--- | The repo behind a git handle, which is what everything reading it with git
--- goes through.
-repoGit :: Repo -> Git.Handle
-repoGit = Git.git . repoDir
+-- | The repo behind a range-diff handle, which is what everything taking a
+-- range-diff in it goes through.
+repoRangeDiff :: Repo -> RangeDiff.Handle
+repoRangeDiff = RangeDiff.git . repoDir
 
 -- | Plan a scenario of between @lo@ and @hi@ rewrites, make a repo holding the
 -- first version of its branch, and run the property in it. Everything the
@@ -84,7 +83,7 @@ repoGit = Git.git . repoDir
 --
 -- Only plans @fit@ takes are built, and only those are shrunk to, so a property
 -- that can't be run on every scenario says so here rather than throwing the
--- repo away once it has been built. "GhPostRangeDiff.Plan"'s @unambiguous@ is
+-- repo away once it has been built. "RangeDiff.Test.Plan"'s @unambiguous@ is
 -- the one such thing there is to ask.
 withRepo :: (Testable prop) => (Int, Int) -> (Plan -> Bool) -> (Repo -> IO prop) -> Property
 withRepo bounds fit act =
@@ -143,11 +142,11 @@ data Movement
     Forced
   deriving (Eq, Show)
 
-baseMovement :: Git.Handle -> CommitSha -> CommitSha -> IO Movement
+baseMovement :: Repo -> CommitSha -> CommitSha -> IO Movement
 baseMovement repo was now
   | was == now = pure Stayed
   | otherwise = do
-      fastForward <- Git.isAncestorOf repo was now
+      fastForward <- isAncestorOf (repoDir repo) was now
       pure (if fastForward then Advanced else Forced)
 
 -- | One rewrite of the branch, as it happened: where the branch was, where it
@@ -186,7 +185,7 @@ evolve repo act = mapM one (rpSteps repo)
 -- the revision that stretch sits on: what a commit put in at the bottom of it
 -- goes after.
 --
--- This is "GhPostRangeDiff.Plan"'s @applied@ carried out for real, and the two
+-- This is "RangeDiff.Test.Plan"'s @applied@ carried out for real, and the two
 -- have to stay in step.
 apply :: Repo -> String -> [Commit] -> [Action] -> IO [Commit]
 apply _ _ cs [] = pure cs

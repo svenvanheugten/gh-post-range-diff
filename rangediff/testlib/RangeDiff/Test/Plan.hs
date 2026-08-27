@@ -6,8 +6,8 @@
 -- before it. Nothing in here has a repo to look at: a commit is no more than
 -- the message it goes under and the one line of its file it chooses, and a
 -- rewrite no more than what it does to the commits that are there.
--- "GhPostRangeDiff.Repo" is what carries a plan out.
-module GhPostRangeDiff.Plan
+-- "RangeDiff.Test.Repo" is what carries a plan out.
+module RangeDiff.Test.Plan
   ( Plan (..),
     Step (..),
     Action (..),
@@ -23,8 +23,8 @@ where
 import Control.Monad (replicateM)
 import Data.Char (isPrint)
 import Data.List (intercalate)
-import GhPostRangeDiff.Gen ()
-import GhPostRangeDiff.RangeDiff qualified as RangeDiff
+import RangeDiff qualified
+import RangeDiff.Test.Gen ()
 import Test.QuickCheck (Gen, arbitrary, choose, frequency, getPrintableString, shrink, shrinkList, suchThat)
 
 -- * What a scenario is going to do
@@ -180,7 +180,7 @@ outcome sh s = Shape (applied (shBase sh) (stpBase s)) (applied (shBranch sh) (s
 -- | A stretch of branch with a plan's actions read against it, bottom commit
 -- first.
 --
--- This is "GhPostRangeDiff.Repo"'s @apply@ with the repo taken out of it,
+-- This is "RangeDiff.Test.Repo"'s @apply@ with the repo taken out of it,
 -- and the two have to agree: what a plan says a stretch becomes is what the
 -- repo it is carried out in has to end up holding.
 applied :: [Committed] -> [Action] -> [Committed]

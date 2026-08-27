@@ -11,10 +11,9 @@ where
 
 import Control.Monad (unless)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
-import GhPostRangeDiff.Git (CommitSha, shaText)
-import GhPostRangeDiff.Git qualified as Git
-import GhPostRangeDiff.GitCommand (git)
 import GhPostRangeDiff.GitHub qualified as GitHub
+import RangeDiff.CommitSha (CommitSha, shaText)
+import RangeDiff.Test.Git (git, isAncestorOf)
 
 data PullRequest = PullRequest
   { -- | the repo the pull request is on
@@ -58,10 +57,6 @@ newPullRequest dir base head' = do
 origin :: PullRequest -> FilePath
 origin = prOrigin
 
--- The repo it is on, behind a git handle.
-repo :: PullRequest -> Git.Handle
-repo = Git.git . prOrigin
-
 -- Where one of the two branches is now.
 tip :: PullRequest -> GitHub.Ref -> IORef CommitSha
 tip pr GitHub.Base = prBaseTip pr
@@ -102,7 +97,7 @@ move pr ref sha = do
     then pure Nothing
     else do
       let ev = GitHub.Ev ref before sha
-      fastForward <- Git.isAncestorOf (repo pr) before sha
+      fastForward <- isAncestorOf (prOrigin pr) before sha
       unless fastForward $ modifyIORef' (prTimeline pr) (++ [ev])
       place pr ref sha
       writeIORef (tip pr ref) sha

@@ -1,20 +1,23 @@
--- | Run `git range-diff` and parse its output into values, so rendering
--- doesn't have to work with the text.
-module GhPostRangeDiff.RangeDiff
+-- | The range-diff between two versions of a branch, behind a handle, so that
+-- it can be mocked. `git range-diff` prints it as text; everything here reads
+-- that text into values, so that whatever reports on it doesn't have to work
+-- with the text.
+module RangeDiff
   ( Change (..),
     Commit (..),
     CommitMessage (messageText),
     commitMessage,
     Interdiff (interdiffText),
     interdiff,
-    rangeDiff,
+    Handle (..),
+    git,
   )
 where
 
 import Data.Bifunctor (first)
 import Data.Maybe (fromMaybe)
-import GhPostRangeDiff.Git (CommitSha, commitSha)
-import GhPostRangeDiff.Git qualified as Git
+import RangeDiff.CommitSha (CommitSha, commitSha, shaText)
+import System.Process (readProcess)
 
 -- | The subject line of a commit, as `git range-diff` prints it. Holds no
 -- newline of its own; see 'commitMessage'.
@@ -115,8 +118,20 @@ mkCommit l body = case peel 5 l of
 parse :: String -> [Commit]
 parse = map (uncurry mkCommit) . chunks . lines
 
--- | Line up @oldBase..oldHead@ against @newBase..newHead@: one 'Commit' per
--- commit in either range, saying what happened to it.
-rangeDiff :: Git.Handle -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
-rangeDiff repo oldBase oldHead newBase newHead =
-  parse <$> Git.rangeDiff repo oldBase oldHead newBase newHead
+-- | Everything there is to ask of a range-diff.
+newtype Handle = Handle
+  { -- | Line up @oldBase..oldHead@ against @newBase..newHead@: one 'Commit'
+    -- per commit in either range, saying what happened to it.
+    rangeDiff :: CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
+  }
+
+-- | Range-diffs taken in the repo in @dir@, as the `git` CLI takes them.
+git :: FilePath -> Handle
+git dir = Handle {rangeDiff = gitRangeDiff dir}
+
+-- Read what `git range-diff` prints for the two ranges.
+gitRangeDiff :: FilePath -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
+gitRangeDiff dir oldBase oldHead newBase newHead = parse <$> readProcess "git" args ""
+  where
+    args = ["-C", dir, "range-diff", range oldBase oldHead, range newBase newHead]
+    range a b = shaText a ++ ".." ++ shaText b

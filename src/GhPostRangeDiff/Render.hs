@@ -6,8 +6,8 @@
 module GhPostRangeDiff.Render (format) where
 
 import Data.List (group, intercalate)
-import GhPostRangeDiff.Git (shaText)
-import GhPostRangeDiff.RangeDiff (Change (..), Commit (..), interdiffText, messageText)
+import RangeDiff (Change (..), Commit (..), interdiffText, messageText)
+import RangeDiff.CommitSha (shaText)
 
 -- | The longest run of consecutive backticks in a string. Used to size a code
 -- fence so it can't be closed early by backticks in the content.
@@ -33,7 +33,7 @@ render (Commit change sha subj) =
 -- | Show a patch as a fenced diff block. The fence is longer than any backtick
 -- run in the patch, so a line like ``` inside the interdiff can't close the
 -- block early. An empty patch gets no block at all. The closing fence needs no
--- newline in front of it: an 'GhPostRangeDiff.RangeDiff.Interdiff' ends on a
+-- newline in front of it: a 'RangeDiff.Interdiff' ends on a
 -- line boundary.
 fenced :: String -> String
 fenced "" = ""
