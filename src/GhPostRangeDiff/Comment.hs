@@ -4,18 +4,19 @@ module GhPostRangeDiff.Comment (comment) where
 
 import Control.Monad.Extra (andM, findM, notM)
 import Data.List (nub)
-import GhPostRangeDiff.Git (CommitSha, abbrev)
+import GhPostRangeDiff.Git (abbrev)
 import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.GitHub (Ev (..), Ref (..))
 import GhPostRangeDiff.GitHub qualified as GitHub
-import GhPostRangeDiff.RangeDiff (rangeDiff)
 import GhPostRangeDiff.Render (format)
+import RangeDiff qualified
+import RangeDiff.CommitSha (CommitSha)
 
 -- | Report on the push oldHead..newHead: a header naming both ends of it, and
 -- the range-diff between the version of the branch it replaced and the one it
 -- left behind.
-comment :: Git.Handle -> GitHub.Handle -> CommitSha -> CommitSha -> IO String
-comment repo pr oldHead newHead = do
+comment :: Git.Handle -> RangeDiff.Handle -> GitHub.Handle -> CommitSha -> CommitSha -> IO String
+comment repo rd pr oldHead newHead = do
   base <- GitHub.baseRef pr
   -- Every recorded base tip, in chronological order, for base reconstruction.
   forcePushesToBase <-
@@ -37,7 +38,7 @@ comment repo pr oldHead newHead = do
             (reverse forcePushesToBase)
         b1 <- maybe (mergeBase newBaseTip oldHead) pure lostAncestorOfOldHead
         pure (b1, newBaseTip)
-  commits <- rangeDiff repo b1 oldHead b2 newHead
+  commits <- RangeDiff.rangeDiff rd b1 oldHead b2 newHead
 
   let header = "### Range-diff for push " ++ abbrev oldHead ++ " → " ++ abbrev newHead
   pure (header ++ "\n\n" ++ format commits)

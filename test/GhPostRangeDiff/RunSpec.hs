@@ -8,13 +8,13 @@ import GhPostRangeDiff.FakeGitHub (PullRequest)
 import GhPostRangeDiff.FakeGitHub qualified as FakeGitHub
 import GhPostRangeDiff.Git (abbrev)
 import GhPostRangeDiff.Git qualified as Git
-import GhPostRangeDiff.GitCommand (git)
 import GhPostRangeDiff.GitHub (Ev (..))
-import GhPostRangeDiff.Plan (Action (..), Plan, Shape (..), Step (..), everyRewrite, outcome)
-import GhPostRangeDiff.RangeDiff qualified as RangeDiff
 import GhPostRangeDiff.Render (format)
-import GhPostRangeDiff.Repo
 import GhPostRangeDiff.Run (Reported (..), run)
+import RangeDiff qualified
+import RangeDiff.Test.Git (git)
+import RangeDiff.Test.Plan (Action (..), Plan, Shape (..), Step (..), everyRewrite, outcome)
+import RangeDiff.Test.Repo
 import System.IO.Temp (withSystemTempDirectory)
 import Test.Hspec
 import Test.QuickCheck (conjoin, counterexample, cover, tabulate, (===))
@@ -36,7 +36,7 @@ data Push = Push
 -- request as GitHub has it so far, in a repo of its own that has fetched
 -- nothing yet, with the repo the pull request is on as its origin. Whatever the
 -- tool needs to diff, it has to go and get.
-push :: Git.Handle -> PullRequest -> Rewrite -> IO Push
+push :: Repo -> PullRequest -> Rewrite -> IO Push
 push scenario pr rw = do
   let Range base head' = rwNow rw
   pushed <- FakeGitHub.push pr base head'
@@ -51,7 +51,7 @@ push scenario pr rw = do
       -- The scenario knows its commits by their full shas, so the range-diff
       -- taken here has to name them the same way the scenario's repo does.
       git dir ["config", "core.abbrev", "no"]
-      run (Git.git dir) (FakeGitHub.handle pr) (evBefore ev) (evAfter ev)
+      run (Git.git dir) (RangeDiff.git dir) (FakeGitHub.handle pr) (evBefore ev) (evAfter ev)
   pure (Push ev moved (rwRangeDiff rw) reported)
 
 -- | What a push should get reported with: a header naming both ends of it, and
@@ -125,7 +125,7 @@ spec =
         pr <- newPullRequest repo
         -- Each push is reported on as it happens, so the tool only ever sees
         -- the timeline GitHub had recorded by then.
-        pushes <- evolve repo (push (repoGit repo) pr)
+        pushes <- evolve repo (push repo pr)
         posted <- FakeGitHub.comments pr
         let moved = map pshBaseMoved pushes
         pure
