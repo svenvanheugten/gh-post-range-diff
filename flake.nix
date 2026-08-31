@@ -75,6 +75,8 @@
         packages.default =
           pkgs.runCommand "gh-post-range-diff-${gh-post-range-diff.version}"
             {
+              pname = "gh-post-range-diff";
+              inherit (gh-post-range-diff) version;
               nativeBuildInputs = [ pkgs.makeWrapper ];
               meta.mainProgram = "gh-post-range-diff";
             }
