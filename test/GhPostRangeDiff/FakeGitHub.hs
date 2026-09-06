@@ -11,13 +11,15 @@ where
 
 import Control.Monad (unless)
 import Data.IORef (IORef, modifyIORef', newIORef, readIORef, writeIORef)
+import GhPostRangeDiff.FakeGit qualified as FakeGit
+import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.GitHub qualified as GitHub
-import RangeDiff.CommitSha (CommitSha, shaText)
-import RangeDiff.Test.Git (git, isAncestorOf)
+import RangeDiff.CommitSha (CommitSha)
 
 data PullRequest = PullRequest
-  { -- | the repo the pull request is on
-    prOrigin :: FilePath,
+  { -- | the repo the pull request is on, which it owns: nothing else places a
+    -- branch on it, and every checkout of it is a clone
+    prOrigin :: FakeGit.Repo,
     -- | where each of the two branches is now, which is what a push moves and
     -- what the next one is recorded against
     prBaseTip, prHeadTip :: IORef CommitSha,
@@ -28,11 +30,6 @@ data PullRequest = PullRequest
 -- | The branches the pull request is between: the one it targets, and the one
 -- under review. Names of our choosing, so keep them clear of whatever else the
 -- repo puts branches under.
---
--- The repo they are placed in is a jj repo, which reads them as bookmarks of
--- its own and carries them along as it rewrites the commits under them. So they
--- wander off between pushes; each push puts them back where the pull request
--- has them, and nothing reads them in between.
 branch :: GitHub.Ref -> String
 branch GitHub.Base = "pr-base"
 branch GitHub.Head = "pr-head"
@@ -41,10 +38,10 @@ branch GitHub.Head = "pr-head"
 -- targets is, and where the branch under review is. Both branches were pushed
 -- before the pull request could exist, and neither of those pushes is anything
 -- it records.
-newPullRequest :: FilePath -> CommitSha -> CommitSha -> IO PullRequest
-newPullRequest dir base head' = do
+newPullRequest :: FakeGit.Repo -> CommitSha -> CommitSha -> IO PullRequest
+newPullRequest repo base head' = do
   pr <-
-    PullRequest dir
+    PullRequest repo
       <$> newIORef base
       <*> newIORef head'
       <*> newIORef []
@@ -53,8 +50,8 @@ newPullRequest dir base head' = do
   place pr GitHub.Head head'
   pure pr
 
--- | Where the repo it is on lives, which is what a checkout of it fetches from.
-origin :: PullRequest -> FilePath
+-- | The repo it is on, which is what a checkout of it clones from.
+origin :: PullRequest -> FakeGit.Repo
 origin = prOrigin
 
 -- Where one of the two branches is now.
@@ -64,7 +61,7 @@ tip pr GitHub.Head = prHeadTip pr
 
 -- Put one of the two branches on a sha.
 place :: PullRequest -> GitHub.Ref -> CommitSha -> IO ()
-place pr ref sha = git (prOrigin pr) ["branch", "-f", branch ref, shaText sha]
+place pr ref = FakeGit.place (prOrigin pr) (branch ref)
 
 -- | The 'GitHub.Handle' onto it, standing in for the `gh` CLI.
 handle :: PullRequest -> GitHub.Handle
@@ -97,7 +94,7 @@ move pr ref sha = do
     then pure Nothing
     else do
       let ev = GitHub.Ev ref before sha
-      fastForward <- isAncestorOf (prOrigin pr) before sha
+      fastForward <- Git.isAncestorOf (FakeGit.handle (prOrigin pr)) before sha
       unless fastForward $ modifyIORef' (prTimeline pr) (++ [ev])
       place pr ref sha
       writeIORef (tip pr ref) sha

@@ -10,6 +10,15 @@ Sure, there is a "Compare" button on the _force push_ event...
 
 This little program solves that by posting a pretty-printed version of the result of [`git range-diff`](https://git-scm.com/docs/git-range-diff) in your Pull Requests every time that they are pushed to. It takes care of the nitty-gritty involved in figuring out the correct commit ranges to compare, even when the base branch was updated simultaneously.
 
+## Supported base branch movements
+
+The tool can unambiguously figure out the old and new base ref, as long as the base branch movements fall into one of these categories, which should cover _most_ common workflows:
+
+- A base branch that nobody _ever_ force-pushes to, and which only grows through ordinary pushes, e.g. `main`. Your PR branch is allowed to lag behind it, and doesn't have to be based on the latest version.
+- A base branch that receives _any_ force pushes. Your PR branch _always_ needs to be based on the latest version. One way to guarantee that is to use [`--update-refs`](https://andrewlock.net/working-with-stacked-branches-in-git-is-easier-with-update-refs/), and to always push the whole stack simultaneously.
+
+Both of these categories are extensively covered by tens of thousands of [property-based tests](https://en.wikipedia.org/wiki/Software_testing#Property_testing). Other base branch movements aren't supported, and might lead to hard-to-read reports.
+
 ## GitHub Actions
 
 The recommended way to use this is as a workflow that comments on every push to a Pull Request. Add `.github/workflows/range-diff.yml`:

@@ -5,11 +5,23 @@ module GhPostRangeDiff.RenderSpec (spec) where
 import Data.List (isInfixOf, stripPrefix)
 import Data.Maybe (mapMaybe)
 import GhPostRangeDiff.Render (format)
-import RangeDiff (Change (..), Commit (..), CommitMessage, Interdiff (interdiffText), commitMessage, interdiff)
+import RangeDiff (Change (..), Commit (..), CommitMessage, Interdiff (interdiffText), commitMessage, interdiff, messageText)
 import RangeDiff.CommitSha (CommitSha, commitSha, shaText)
-import RangeDiff.Test.Gen ()
 import Test.Hspec
 import Test.QuickCheck
+
+-- A commit message: printable words with the occasional run of backticks,
+-- which sits mid-line and so must not be read as a code fence.
+--
+-- Nothing more is asked of it than that. A message goes out on the header line
+-- and comes straight back off it, and 'commitMessage' has already dropped
+-- everything past the first line, so whatever is left round-trips.
+instance Arbitrary CommitMessage where
+  arbitrary = commitMessage . unwords <$> resize 3 (listOf word)
+    where
+      word = frequency [(4, getPrintableString <$> arbitrary), (1, pure "```")]
+
+  shrink m = filter (/= m) (map commitMessage (shrink (messageText m)))
 
 -- An interdiff: arbitrary text, built from chunks so that newlines and runs
 -- of backticks both turn up often.

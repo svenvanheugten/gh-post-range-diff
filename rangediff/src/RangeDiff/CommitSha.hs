@@ -11,7 +11,7 @@ import Data.Maybe (fromMaybe)
 
 -- | A commit sha, whether abbreviated or written out in full.
 newtype CommitSha = CommitSha {shaText :: String}
-  deriving (Eq, Show)
+  deriving (Eq, Ord, Show)
 
 -- | Read a sha, rejecting anything that isn't one. Git abbreviates to at least
 -- four hex digits and never past the full forty, and prints them in lowercase.
