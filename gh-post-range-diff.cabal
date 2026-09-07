@@ -1,6 +1,6 @@
 cabal-version:      3.0
 name:               gh-post-range-diff
-version:            0.5.0
+version:            0.5.1
 synopsis:           Post `git range-diff` on a PR after a force-push
 description:
     A GitHub Action, and a CLI, that comments on a pull request with the
