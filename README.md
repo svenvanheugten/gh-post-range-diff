@@ -55,3 +55,14 @@ Or with Nix:
 ```
 nix run github:svenvanheugten/gh-post-range-diff -- <pr number>
 ```
+
+Or with [home-manager](https://nix-community.github.io/home-manager/):
+
+```nix
+# flake.nix inputs:
+#   gh-post-range-diff.url = "github:svenvanheugten/gh-post-range-diff";
+
+programs.gh.extensions = [ inputs.gh-post-range-diff.packages.${pkgs.system}.default ];
+```
+
+Then run `gh post-range-diff <pr number>`.
