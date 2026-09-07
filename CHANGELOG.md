@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-07
+
 ### Added
 
 - The GitHub Action now verifies that the release is immutable before installing it (https://github.com/svenvanheugten/gh-post-range-diff/pull/25)

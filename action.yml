@@ -17,7 +17,7 @@ runs:
     # The version this action installs.
     - name: Resolve the version to install
       shell: bash
-      run: echo "VERSION=v0.4.2" >> "$GITHUB_ENV"
+      run: echo "VERSION=v0.5.0" >> "$GITHUB_ENV"
 
     # We unfortunately can't pin the version to a specific SHA, since `gh extension install`
     # doesn't accept commit SHA's for binary extensions: https://github.com/cli/cli/issues/10837.
