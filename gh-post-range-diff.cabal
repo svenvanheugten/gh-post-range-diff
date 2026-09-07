@@ -45,28 +45,6 @@ library rangediff
         base    >=4.20 && <5,
         process >=1.6  && <1.7,
 
--- What it takes to try `rangediff` against real repos: a scenario of rewrites,
--- planned and then carried out. Written for the range-diff tests, and used by
--- the tool's tests too, which is as far as the dependency goes: nothing here
--- knows about `GhPostRangeDiff` either.
-library rangediff-test-support
-    import:           defaults
-    hs-source-dirs:   rangediff/testlib
-    exposed-modules:
-        RangeDiff.Test.Gen
-        RangeDiff.Test.Git
-        RangeDiff.Test.Plan
-        RangeDiff.Test.Repo
-
-    build-depends:
-        base       >=4.20 && <5,
-        directory  >=1.3  && <1.4,
-        extra      >=1.7  && <2,
-        process    >=1.6  && <1.7,
-        QuickCheck >=2.14 && <3,
-        temporary  >=1.3  && <1.4,
-        gh-post-range-diff:rangediff,
-
 -- Builds real repos, rewriting them with jujutsu and reading them with git, so
 -- it needs both `jj` and `git` on PATH at run time.
 test-suite rangediff-spec
@@ -76,17 +54,26 @@ test-suite rangediff-spec
     main-is:          Spec.hs
     other-modules:
         RangeDiffSpec
+        RangeDiff.Test.Gen
+        RangeDiff.Test.Git
+        RangeDiff.Test.Plan
+        RangeDiff.Test.Repo
     build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
     build-depends:
         base       >=4.20 && <5,
+        directory  >=1.3  && <1.4,
+        extra      >=1.7  && <2,
         hspec      >=2.10 && <3,
+        process    >=1.6  && <1.7,
         QuickCheck >=2.14 && <3,
-        gh-post-range-diff:{rangediff, rangediff-test-support},
+        temporary  >=1.3  && <1.4,
+        gh-post-range-diff:rangediff,
 
 library
     import:           defaults
     hs-source-dirs:   src
     exposed-modules:
+        GhPostRangeDiff.Bases
         GhPostRangeDiff.Git
         GhPostRangeDiff.GitHub
         GhPostRangeDiff.Render
@@ -116,14 +103,18 @@ test-suite spec
     hs-source-dirs:   test
     main-is:          Spec.hs
     other-modules:
+        GhPostRangeDiff.BasesSpec
+        GhPostRangeDiff.FakeGit
         GhPostRangeDiff.FakeGitHub
         GhPostRangeDiff.RenderSpec
-        GhPostRangeDiff.RunSpec
     build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
     build-depends:
-        base       >=4.20 && <5,
-        hspec      >=2.10 && <3,
-        QuickCheck >=2.14 && <3,
-        temporary  >=1.3  && <1.4,
+        base              >=4.20 && <5,
+        base16-bytestring >=1.0  && <1.1,
+        bytestring        >=0.12 && <0.13,
+        containers        >=0.6  && <0.8,
+        cryptohash-sha1   >=0.11 && <0.12,
+        hspec             >=2.10 && <3,
+        QuickCheck        >=2.14 && <3,
         gh-post-range-diff,
-        gh-post-range-diff:{rangediff, rangediff-test-support},
+        gh-post-range-diff:rangediff,
