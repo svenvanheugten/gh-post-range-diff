@@ -34,7 +34,7 @@ spec = do
       w' <- sha repo w
       rangeDiff repo old now `shouldRead` [unchanged w' "Add the widget"]
 
-    it "reads a reworded commit under the message it had, with a metadata hunk" $ \repo -> do
+    it "reads a reworded commit under the message it was reworded to, with a metadata hunk" $ \repo -> do
       root <- initial repo
       [w] <- stack repo root [addWidget "30"]
       old <- version repo root w
@@ -42,7 +42,7 @@ spec = do
       now <- version repo root w
       w' <- sha repo w
       rangeDiff repo old now
-        `shouldRead` [updated (rewordedWidget "Add the widget" "Add a widget") w' "Add the widget"]
+        `shouldRead` [updated (rewordedWidget "Add the widget" "Add a widget") w' "Add a widget"]
 
     it "reads an amended commit with a hunk over its patch" $ \repo -> do
       root <- initial repo
@@ -72,7 +72,7 @@ spec = do
       now <- version repo root w
       w' <- sha repo w
       rangeDiff repo old now
-        `shouldRead` [updated (rewordedWidget "Add the widget" "Add a widget" ++ timeoutTo5) w' "Add the widget"]
+        `shouldRead` [updated (rewordedWidget "Add the widget" "Add a widget" ++ timeoutTo5) w' "Add a widget"]
 
     it "reads a reworded body as a hunk over the message, keeping its blank lines" $ \repo -> do
       root <- initial repo
@@ -96,6 +96,40 @@ spec = do
                          w'
                          "Add the widget"
                      ]
+
+    it "reads a commit reworded just below its subject under the subject it kept" $ \repo -> do
+      root <- initial repo
+      [w] <- stack repo root [(addWidget "30") {ptMessage = "Add the widget\n\nIt times out."}]
+      old <- version repo root w
+      reword repo w "Add the widget\n\nIt hangs."
+      now <- version repo root w
+      w' <- sha repo w
+      rangeDiff repo old now
+        `shouldRead` [ updated
+                         [ "@@ Metadata",
+                           "  ## Commit message ##",
+                           "     Add the widget",
+                           " ",
+                           "-    It times out.",
+                           "+    It hangs.",
+                           " ",
+                           "  ## widget.py (new) ##",
+                           " @@"
+                         ]
+                         w'
+                         "Add the widget"
+                     ]
+
+    it "reads a reworded commit under the message it was reworded to in a repo that has git diff without context" $ \repo -> do
+      configure repo "diff.context" "0"
+      root <- initial repo
+      [w] <- stack repo root [addWidget "30"]
+      old <- version repo root w
+      reword repo w "Add a widget"
+      now <- version repo root w
+      w' <- sha repo w
+      rangeDiff repo old now
+        `shouldRead` [updated (rewordedWidget "Add the widget" "Add a widget") w' "Add a widget"]
 
     it "reads a removed commit under its old sha, and an added one under its new sha" $ \repo -> do
       root <- initial repo

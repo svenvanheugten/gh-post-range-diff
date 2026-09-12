@@ -15,6 +15,7 @@ module RangeDiff
 where
 
 import Data.Bifunctor (first)
+import Data.List (find, isPrefixOf)
 import Data.Maybe (fromMaybe)
 import RangeDiff.CommitSha (CommitSha, commitSha, shaText)
 import System.Process (readProcess)
@@ -97,7 +98,9 @@ peel n s = case span (/= ' ') (dropWhile (== ' ') s) of
 -- The marker is one of @=@ (unchanged), @!@ (same commit, different diff),
 -- @>@ (added), @<@ (removed). For an added commit the old side is @-  -------@;
 -- for a removed one the new side is. Everything past the fifth field is the
--- commit message, taken verbatim.
+-- commit message, taken verbatim -- except that git takes it from the old side
+-- of a pair, so a @!@ commit that was reworded is read under the message its
+-- interdiff says it was reworded to. See 'rewordedTo'.
 mkCommit :: String -> [String] -> Commit
 mkCommit l body = case peel 5 l of
   Just ([_, oldSha, [m], _, newSha], subj) -> case m of
@@ -106,13 +109,39 @@ mkCommit l body = case peel 5 l of
     -- new-side sha we can link to.
     '<' -> commit Removed oldSha subj
     '=' -> commit Unchanged newSha subj
-    '!' -> commit (Updated (interdiff (unlines (map (stripIndent 4) body)))) newSha subj
+    '!' -> commit (Updated (interdiff (unlines hunks))) newSha (fromMaybe subj (rewordedTo hunks))
     _ -> bad
   _ -> bad
   where
+    hunks = map (stripIndent 4) body
     -- The side we didn't pick is `-------`, so only the one we keep is read.
     commit change sha subj = Commit change (fromMaybe bad (commitSha sha)) (commitMessage subj)
     bad = error ("unexpected range-diff header: " ++ l)
+
+-- | The subject a commit now goes under, if its interdiff shows it.
+--
+-- git diffs each commit's metadata, then its message, then its patch, with the
+-- message under a line of its own and the subject straight below that:
+--
+-- > @@ Metadata
+-- >  Author: t <t@t>
+-- >
+-- >   ## Commit message ##
+-- > -    Add the widget
+-- > +    Add a widget
+--
+-- A reworded subject always brings that line along as context, so where it is
+-- missing the subject did not change and the header has it right. Only the
+-- first hunk is looked in, and only if it starts in the metadata: a patch could
+-- hold a line that reads the same, but never above the message.
+rewordedTo :: [String] -> Maybe String
+rewordedTo ("@@ Metadata" : hunk) = drop 5 <$> find onNewSide message
+  where
+    message = drop 1 (dropWhile (/= "  ## Commit message ##") (takeWhile (not . isPrefixOf "@@") hunk))
+    -- Past the old subject, if there is one, to the new one; then past the
+    -- interdiff's own marker and the indent git gives a message.
+    onNewSide s = take 1 s `elem` [" ", "+"]
+rewordedTo _ = Nothing
 
 -- | Parse `git range-diff` output, one 'Commit' per header line.
 parse :: String -> [Commit]
@@ -131,9 +160,11 @@ git dir = Handle {rangeDiff = gitRangeDiff dir}
 
 -- Read what `git range-diff` prints for the two ranges. Colour is asked off
 -- outright, since a repo or user configured to have it always would otherwise
--- wrap every header in escape codes.
+-- wrap every header in escape codes. Context is asked for outright too, since
+-- one configured to have none would leave a reworded subject without the line
+-- that says it is the subject; see 'rewordedTo'.
 gitRangeDiff :: FilePath -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
 gitRangeDiff dir oldBase oldHead newBase newHead = parse <$> readProcess "git" args ""
   where
-    args = ["-C", dir, "range-diff", "--no-color", range oldBase oldHead, range newBase newHead]
+    args = ["-C", dir, "range-diff", "--no-color", "--unified=3", range oldBase oldHead, range newBase newHead]
     range a b = shaText a ++ ".." ++ shaText b
