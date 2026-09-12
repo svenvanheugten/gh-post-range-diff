@@ -51,6 +51,12 @@ It can always work that out in these two cases, which should cover _most_ common
 
 Both cases are covered by tens of thousands of [property-based tests](https://en.wikipedia.org/wiki/Software_testing#Property_testing). Anything outside them isn't supported. In particular, once the base branch has been force-pushed at any point while your PR is open, every push to your branch has to be on the latest version of the base branch, or the report will include commits from the base branch.
 
+## Sharper reports for [jj](https://jj-vcs.github.io/jj/) repositories
+
+`git range-diff` has to _guess_ which commit of the old version of your branch is which commit of the new one, by comparing how alike their diffs are, and it can guess wrong, reporting one rewritten commit as a commit dropped and an unrelated commit added.
+
+Commits made with [jj](https://jj-vcs.github.io/jj/) carry a change ID that survives every rewrite, so there is nothing to guess. Where every commit in both versions of the branch carries one, and `jj` is on the `PATH`, the report is worked out with `jj interdiff` instead. Commits are matched by change ID, and each rewrite is shown as a diff of the commits themselves, rather than of their formatted patches.
+
 ## GitHub Actions
 
 The recommended way to use this is as a workflow that comments on every push to a Pull Request. Add `.github/workflows/range-diff.yml`:
