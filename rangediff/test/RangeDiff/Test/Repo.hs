@@ -9,6 +9,7 @@
 -- is all `git range-diff` goes on.
 module RangeDiff.Test.Repo
   ( Repo,
+    repoDir,
     inRepos,
     configure,
     ChangeId,
@@ -24,6 +25,8 @@ module RangeDiff.Test.Repo
     moveBefore,
     sha,
     shas,
+    abbreviated,
+    takeRangeDiff,
     RangeDiffOf,
     rangeDiff,
     shouldRead,
@@ -49,6 +52,11 @@ import Test.Hspec (Expectation, Spec, SpecWith, around, aroundAll_, expectationF
 -- | A repo to build a branch in, by where it is.
 newtype Repo = Repo FilePath
 
+-- | Where a repo is, for whatever reaches it from outside: a range-diff handle,
+-- or a clone of it.
+repoDir :: Repo -> FilePath
+repoDir (Repo dir) = dir
+
 -- | A commit by its change id, which survives every rewrite of it.
 newtype ChangeId = ChangeId String
 
@@ -67,7 +75,7 @@ inRepos = aroundAll_ isolated . around withRepo
 -- thing under test, so the config of whoever runs the tests has no business
 -- shaping it, nor that of jj what gets built: a global excludes file, say,
 -- would keep files out of the commits. The environment is inherited by every
--- process the examples run, the git behind 'RangeDiff.git' included, and is
+-- process the examples run, the git and jj behind the handles included, and is
 -- put back the way it was once they are done.
 isolated :: IO () -> IO ()
 isolated act = withSystemTempDirectory "gh-post-range-diff" $ \tmp -> do
@@ -180,33 +188,41 @@ sha repo c = do
   [s] <- shas repo [c]
   pure s
 
--- | The commits some distinct changes are on, in the order they are asked for.
--- Each is abbreviated as git abbreviates it, since that is how `range-diff`
--- prints it to the tool.
+-- | The commits some changes are on, in the order they are asked for.
 shas :: Repo -> [ChangeId] -> IO [CommitSha]
 shas (Repo dir) cs = do
   ids <- map (break (== ' ')) . lines <$> jjIn dir ["log", "--no-graph", "-r", revset, "-T", template]
-  let full (ChangeId c) = drop 1 (fromMaybe (error ("no commit for change " ++ c)) (lookup c ids))
-  map knownSha . lines
-    <$> readProcess "git" (["-C", dir, "log", "--no-walk=unsorted", "--format=%h"] ++ map full cs) ""
+  pure [knownSha (drop 1 (fromMaybe (error ("no commit for change " ++ c)) (lookup c ids))) | ChangeId c <- cs]
   where
     revset = foldr1 (\a b -> a ++ " | " ++ b) [c | ChangeId c <- cs]
     template = "change_id ++ \" \" ++ commit_id ++ \"\\n\""
 
--- | The range-diff of @oldBase..oldHead@ against @newBase..newHead@, still to
--- be taken.
-data RangeDiffOf = RangeDiffOf Repo (CommitSha, CommitSha) (CommitSha, CommitSha)
+-- | Some distinct commits, each abbreviated as git abbreviates it, which is how
+-- `git range-diff` prints it.
+abbreviated :: Repo -> [CommitSha] -> IO [CommitSha]
+abbreviated (Repo dir) ss =
+  map knownSha . lines
+    <$> readProcess "git" (["-C", dir, "log", "--no-walk=unsorted", "--format=%h"] ++ map shaText ss) ""
 
-rangeDiff :: Repo -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> RangeDiffOf
+-- | Take the range-diff of @oldBase..oldHead@ against @newBase..newHead@ with
+-- the handle @way@ makes for the repo.
+takeRangeDiff :: (FilePath -> RangeDiff.Handle) -> Repo -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> IO [RangeDiff.Commit]
+takeRangeDiff way (Repo dir) (oldBase, oldHead) (newBase, newHead) =
+  RangeDiff.rangeDiff (way dir) oldBase oldHead newBase newHead
+
+-- | The range-diff of @oldBase..oldHead@ against @newBase..newHead@, still to
+-- be taken with the handle @way@ makes for the repo.
+data RangeDiffOf = RangeDiffOf (FilePath -> RangeDiff.Handle) Repo (CommitSha, CommitSha) (CommitSha, CommitSha)
+
+rangeDiff :: (FilePath -> RangeDiff.Handle) -> Repo -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> RangeDiffOf
 rangeDiff = RangeDiffOf
 
--- | Expect a range-diff, taken the way the tool takes it, to read as
--- @expected@. The expected values are written out by hand from what git
--- prints, so when one doesn't match, or git prints something that can't be
--- read at all, the failure says what git printed.
+-- | Expect a range-diff to read as @expected@. The expected values are written
+-- out by hand, so when one doesn't match, or what was printed can't be read at
+-- all, the failure says what `git range-diff` printed for the same ranges.
 shouldRead :: (HasCallStack) => RangeDiffOf -> [RangeDiff.Commit] -> Expectation
-shouldRead (RangeDiffOf repo@(Repo dir) (oldBase, oldHead) (newBase, newHead)) expected =
-  (RangeDiff.rangeDiff (RangeDiff.git dir) oldBase oldHead newBase newHead >>= (`shouldBe` expected))
+shouldRead (RangeDiffOf way repo old@(oldBase, oldHead) now@(newBase, newHead)) expected =
+  (takeRangeDiff way repo old now >>= (`shouldBe` expected))
     `catches` [ Handler $ \(HUnitFailure loc reason) -> throwIO . HUnitFailure loc . withPrinted reason =<< printed,
                 Handler $ \(ErrorCall e) -> expectationFailure . ((e ++ "\n") ++) =<< printed
               ]

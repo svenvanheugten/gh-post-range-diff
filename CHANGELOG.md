@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Take the range-diff with `jj` where every commit in both ranges carries a jj change id and `jj` is installed. A change id survives every rewrite of a commit, so which commit of the old version of the branch is which commit of the new one is read off the commits rather than guessed at from how alike their patches are, and the interdiff is a diff of the commits themselves rather than of their formatted patches. A checkout that jj was never set up in — a CI checkout — is made into a colocated jj repository in place, which costs it nothing.
+
+- The GitHub Action now installs `jj`, so that a branch made with jj gets the sharper report without anything having to be set up in the workflow.
+
 ### Changed
+
+- Fetch nothing, and write nothing, in a repository you work in with jj. A colocated jj repository already holds both versions of the branch, including the commits the force-push left behind, so running the tool there leaves no refs of ours behind in it. Everywhere else the commits are fetched from `origin` as before.
 
 - Wrap interdiff lines longer than 104 characters, since GitHub scrolls a code block sideways rather than wrapping it. A wrapped line carries on below under the same diff markers, after a ↪. Tabs count as wide as GitHub shows them. (https://github.com/svenvanheugten/gh-post-range-diff/pull/80)
 - Report a reworded commit under the message it was reworded to. It was reported under the message it was being rewritten away from, which is the one `git range-diff` puts on its header line. (https://github.com/svenvanheugten/gh-post-range-diff/pull/78)

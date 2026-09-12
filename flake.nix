@@ -29,9 +29,13 @@
           programs.nixfmt.enable = true;
         };
 
+        # jujutsu is optional: without it the range-diff is taken with
+        # `git range-diff`. It is brought along so that a branch made with jj
+        # gets the sharper report, as the GitHub Action does.
         runtimeDeps = [
           pkgs.git
           pkgs.gh
+          pkgs.jujutsu
         ];
 
         # The test suite builds real repos: it rewrites them with jujutsu and

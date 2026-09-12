@@ -11,6 +11,7 @@ where
 
 import Data.List.Extra (trim)
 import RangeDiff.CommitSha (CommitSha, knownSha, shaText)
+import RangeDiff.Jj (colocated)
 import System.Exit (ExitCode (..))
 import System.Process (callProcess, readProcess, readProcessWithExitCode)
 
@@ -21,9 +22,10 @@ abbrev = take 7 . shaText
 
 -- | Everything the tool does with the repo it takes its range-diffs in.
 data Handle = Handle
-  { -- | Bring the branch named here, and every commit listed, in from origin,
-    -- and hand back the commit that branch is on. Nothing else here can be
-    -- asked about a commit this has not brought in first.
+  { -- | See to it that the repo has the branch named here and every commit
+    -- listed, bringing them in from origin where it doesn't, and hand back
+    -- the commit that branch is on. Nothing else here, and no range-diff, can
+    -- be asked about a commit this has not seen to first.
     fetch :: String -> [CommitSha] -> IO CommitSha,
     -- | Does @a@ come before @b@ on the same line of history?
     isAncestorOf :: CommitSha -> CommitSha -> IO Bool,
@@ -50,7 +52,17 @@ command dir args = readProcess "git" (at dir args) ""
 at :: FilePath -> [String] -> [String]
 at dir args = "-C" : dir : args
 
--- Fetch the branch and the commits, then read back where the branch ended up.
+-- Make sure the repo has both versions of the branch, and read back where the
+-- base branch ended up.
+--
+-- A colocated repo -- one somebody works in with jj -- is left alone. It is
+-- their own repo, and it already holds every commit there is to ask about:
+-- they pushed both versions of the branch from it, and jj keeps what a rewrite
+-- leaves behind where git leaves it reachable from nothing. So there is
+-- nothing to bring in, and fetching would only mean leaving a ref of ours
+-- behind in somebody's repo. A repo that isn't colocated is a checkout
+-- something made to run this in, and nothing is lost by writing to it. See
+-- 'colocated'.
 --
 -- refs/rd/base is a scratch ref holding the fetched branch tip. We need it
 -- because without a destination the tip only lands in FETCH_HEAD, which this
@@ -58,8 +70,12 @@ at dir args = "-C" : dir : args
 -- tip back out to rev-parse afterwards.
 gitFetch :: FilePath -> String -> [CommitSha] -> IO CommitSha
 gitFetch dir base commits = do
-  callProcess "git" (at dir (["fetch", "--quiet", "origin", base ++ ":refs/rd/base"] ++ map shaText commits))
-  revParse dir "refs/rd/base"
+  theirs <- colocated dir
+  if theirs
+    then revParse dir ("refs/remotes/origin/" ++ base)
+    else do
+      callProcess "git" (at dir (["fetch", "--quiet", "origin", base ++ ":refs/rd/base"] ++ map shaText commits))
+      revParse dir "refs/rd/base"
 
 gitIsAncestorOf :: FilePath -> CommitSha -> CommitSha -> IO Bool
 gitIsAncestorOf dir a b = do

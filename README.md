@@ -40,6 +40,14 @@ This little program solves that by posting a pretty-printed version of [`git ran
 
 Long lines are wrapped to fit the width of a PR comment, carrying on below under the same diff markers after a ↪. In the real comment, GitHub turns each sha into a link to that commit.
 
+## Sharper reports for [jj](https://jj-vcs.github.io/jj/) repositories
+
+`git range-diff` has to _guess_ which commit of the old version of your branch is which commit of the new one, by comparing how alike their diffs are, and it can guess wrong — reporting one rewritten commit as a commit dropped and an unrelated commit added.
+
+Commits made with [jj](https://jj-vcs.github.io/jj/) carry a change ID that survives every rewrite, so there is nothing to guess. Where every commit in both versions of the branch carries one, and `jj` is on the `PATH`, the report is worked out with `jj interdiff` instead: commits are matched by change ID, and each rewrite is shown as a diff of the commits themselves rather than of their formatted patches. Everywhere else, `git range-diff` is used exactly as before.
+
+The checkout itself doesn't have to be a jj repository: where it isn't one, the tool makes it one in place, which costs a throwaway CI checkout nothing. A repository you work in with jj yourself is left exactly as it is — nothing is fetched into it and nothing is written to it, because it already holds both versions of the branch and every commit the force-push left behind. The GitHub Action installs `jj` for you, and the Nix package brings it along, so this happens by itself.
+
 ## Supported base branch movements
 
 To show only the changes to your own commits, the tool needs to know where the old and the new version of your branch forked off the base branch.

@@ -30,6 +30,40 @@ runs:
         GH_TOKEN: ${{ inputs.github-token }}
       run: gh release verify "$VERSION" --repo "svenvanheugten/gh-post-range-diff"
 
+    # With `jj` there, the report is worked out by the change ids jj writes on
+    # its commits rather than by guessing which commit of the old branch is
+    # which commit of the new one; see "Sharper reports" in the README. Nothing
+    # has to be set up in the checkout for it: the tool makes the checkout
+    # into a jj repository itself. Where a branch carries no change ids,
+    # `git range-diff` is used and this download is what it cost to find out.
+    - name: Install jj, for a sharper report where the branch was made with it
+      shell: bash
+      env:
+        JJ_VERSION: v0.45.1
+        JJ_SHA256_X86_64: f35438350b5d61963aac5dd74ede510b31d6b9690769d1a6268cf058cc825f72
+        JJ_SHA256_AARCH64: 7349a43dd5a20dbc998b10114daa0ee63d2ab863fb822c7eb6b0ebca5903cc69
+      run: |
+        set -euo pipefail
+
+        # A runner there is no build for is not a runner to fail on: jj is what
+        # makes the report sharper, not what makes it possible, and without it
+        # the run falls back on `git range-diff`.
+        case "$(uname -s)-$(uname -m)" in
+          Linux-x86_64) target=x86_64-unknown-linux-musl; sha=$JJ_SHA256_X86_64 ;;
+          Linux-aarch64) target=aarch64-unknown-linux-musl; sha=$JJ_SHA256_AARCH64 ;;
+          *) echo "No pinned jj build for $(uname -s)-$(uname -m); taking the range-diff with git."; exit 0 ;;
+        esac
+
+        archive="$RUNNER_TEMP/jj.tar.gz"
+        curl --silent --show-error --fail --location --output "$archive" \
+          "https://github.com/jj-vcs/jj/releases/download/$JJ_VERSION/jj-$JJ_VERSION-$target.tar.gz"
+        echo "$sha  $archive" | sha256sum --check -
+
+        mkdir -p "$RUNNER_TEMP/jj" "$HOME/.local/bin"
+        tar --extract --file "$archive" --directory "$RUNNER_TEMP/jj"
+        mv "$RUNNER_TEMP/jj/jj" "$HOME/.local/bin/jj"
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
     # Install exactly the verified version and run it.
     - name: Install and run
       shell: bash
