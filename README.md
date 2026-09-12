@@ -8,7 +8,7 @@ Sure, there is a "Compare" button on the _force push_ event...
 
 ... but if you've rebased the Pull Request on its base branch, then all changes in the base branch will _also_ show up there, which makes it really hard to understand what has changed in the Pull Request's _own_ commits. And even _if_ the base branch is completely unchanged, you will be unable to see _which_ commits have changed, and how. All you'll see is one big diff.
 
-This little program solves that by posting a pretty-printed version of the result of [`git range-diff`](https://git-scm.com/docs/git-range-diff) in your Pull Requests on every push:
+This little program solves that by posting a pretty-printed version of [`git range-diff`](https://git-scm.com/docs/git-range-diff) in your Pull Requests on every push:
 
 > ### Range-diff for push `3ce33dc` → `806d19e`
 >
