@@ -9,7 +9,9 @@
 -- is all `git range-diff` goes on.
 module RangeDiff.Test.Repo
   ( Repo,
+    repoDir,
     inRepos,
+    colocate,
     configure,
     ChangeId,
     Patch (..),
@@ -24,30 +26,29 @@ module RangeDiff.Test.Repo
     moveBefore,
     sha,
     shas,
-    RangeDiffOf,
-    rangeDiff,
-    shouldRead,
   )
 where
 
-import Control.Exception (ErrorCall (..), Handler (..), bracket, catches, throwIO)
+import Control.Exception (bracket)
 import Control.Monad (foldM, void)
 import Data.List.Extra (trim)
 import Data.Maybe (fromMaybe)
-import GHC.Stack (HasCallStack)
-import RangeDiff qualified
-import RangeDiff.CommitSha (CommitSha, knownSha, shaText)
+import RangeDiff.CommitSha (CommitSha, knownSha)
 import System.Directory (createDirectory, createDirectoryIfMissing)
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
 import System.IO.Temp (withSystemTempDirectory)
 import System.Process (readProcess, readProcessWithExitCode)
-import Test.HUnit.Lang (FailureReason (..), HUnitFailure (..))
-import Test.Hspec (Expectation, Spec, SpecWith, around, aroundAll_, expectationFailure, shouldBe)
+import Test.Hspec (Spec, SpecWith, around, aroundAll_)
 
 -- | A repo to build a branch in, by where it is.
 newtype Repo = Repo FilePath
+
+-- | Where a repo is, for whatever reaches it from outside: a range-diff handle,
+-- or a clone of it.
+repoDir :: Repo -> FilePath
+repoDir (Repo dir) = dir
 
 -- | A commit by its change id, which survives every rewrite of it.
 newtype ChangeId = ChangeId String
@@ -66,18 +67,21 @@ inRepos = aroundAll_ isolated . around withRepo
 -- | Run the examples in an environment of their own. What git prints is the
 -- thing under test, so the config of whoever runs the tests has no business
 -- shaping it, nor that of jj what gets built: a global excludes file, say,
--- would keep files out of the commits. The environment is inherited by every
--- process the examples run, the git behind 'RangeDiff.git' included, and is
+-- would keep files out of the commits. Only git's own config is set, so that
+-- it never abbreviates a sha: how far it does is its own business, and varies
+-- with the size of the repo. The environment is inherited by every
+-- process the examples run, the git and jj behind the handles included, and is
 -- put back the way it was once they are done.
 isolated :: IO () -> IO ()
 isolated act = withSystemTempDirectory "gh-post-range-diff" $ \tmp -> do
   writeFile (tmp </> "jj.toml") jjConfig
+  writeFile (tmp </> "gitconfig") gitConfig
   let environment =
         [ ("HOME", Just tmp),
           -- Where git and jj look for config, excludes and attributes that
           -- nothing points them at.
           ("XDG_CONFIG_HOME", Just (tmp </> "config")),
-          ("GIT_CONFIG_GLOBAL", Just "/dev/null"),
+          ("GIT_CONFIG_GLOBAL", Just (tmp </> "gitconfig")),
           ("GIT_CONFIG_NOSYSTEM", Just "1"),
           ("GIT_CONFIG_PARAMETERS", Nothing),
           ("GIT_CONFIG_COUNT", Nothing),
@@ -92,6 +96,9 @@ isolated act = withSystemTempDirectory "gh-post-range-diff" $ \tmp -> do
       was <- lookupEnv k
       maybe (unsetEnv k) (setEnv k) v
       pure (k, was)
+
+gitConfig :: String
+gitConfig = unlines ["[core]", "\tabbrev = no"]
 
 jjConfig :: String
 jjConfig =
@@ -112,6 +119,16 @@ withRepo act = withSystemTempDirectory "repo" $ \tmp -> do
   createDirectory dir
   _ <- jj ["git", "init", "--colocate", dir]
   act (Repo dir)
+
+-- | Set jj up over the git repo in @dir@, colocated with it, the way somebody
+-- takes to jj in a repo they have been committing to with git. The commits git
+-- made carry no change id; those made from here on, with jj, do. Hands back the
+-- repo, and the commit git has checked out, to build on.
+colocate :: FilePath -> IO (Repo, ChangeId)
+colocate dir = do
+  _ <- jj ["git", "init", "--colocate", dir]
+  checkedOut <- ChangeId . trim <$> jjIn dir ["log", "--no-graph", "-r", "@-", "-T", "change_id"]
+  pure (Repo dir, checkedOut)
 
 -- | Set a git config variable in the repo itself, where it outranks whatever
 -- the environment sets.
@@ -180,45 +197,14 @@ sha repo c = do
   [s] <- shas repo [c]
   pure s
 
--- | The commits some distinct changes are on, in the order they are asked for.
--- Each is abbreviated as git abbreviates it, since that is how `range-diff`
--- prints it to the tool.
+-- | The commits some changes are on, in the order they are asked for.
 shas :: Repo -> [ChangeId] -> IO [CommitSha]
 shas (Repo dir) cs = do
   ids <- map (break (== ' ')) . lines <$> jjIn dir ["log", "--no-graph", "-r", revset, "-T", template]
-  let full (ChangeId c) = drop 1 (fromMaybe (error ("no commit for change " ++ c)) (lookup c ids))
-  map knownSha . lines
-    <$> readProcess "git" (["-C", dir, "log", "--no-walk=unsorted", "--format=%h"] ++ map full cs) ""
+  pure [knownSha (drop 1 (fromMaybe (error ("no commit for change " ++ c)) (lookup c ids))) | ChangeId c <- cs]
   where
     revset = foldr1 (\a b -> a ++ " | " ++ b) [c | ChangeId c <- cs]
     template = "change_id ++ \" \" ++ commit_id ++ \"\\n\""
-
--- | The range-diff of @oldBase..oldHead@ against @newBase..newHead@, still to
--- be taken.
-data RangeDiffOf = RangeDiffOf Repo (CommitSha, CommitSha) (CommitSha, CommitSha)
-
-rangeDiff :: Repo -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> RangeDiffOf
-rangeDiff = RangeDiffOf
-
--- | Expect a range-diff, taken the way the tool takes it, to read as
--- @expected@. The expected values are written out by hand from what git
--- prints, so when one doesn't match, or git prints something that can't be
--- read at all, the failure says what git printed.
-shouldRead :: (HasCallStack) => RangeDiffOf -> [RangeDiff.Commit] -> Expectation
-shouldRead (RangeDiffOf repo@(Repo dir) (oldBase, oldHead) (newBase, newHead)) expected =
-  (RangeDiff.rangeDiff (RangeDiff.git dir) oldBase oldHead newBase newHead >>= (`shouldBe` expected))
-    `catches` [ Handler $ \(HUnitFailure loc reason) -> throwIO . HUnitFailure loc . withPrinted reason =<< printed,
-                Handler $ \(ErrorCall e) -> expectationFailure . ((e ++ "\n") ++) =<< printed
-              ]
-  where
-    printed = ("git range-diff printed:\n" ++) <$> rangeDiffText repo (range oldBase oldHead) (range newBase newHead)
-    range a b = shaText a ++ ".." ++ shaText b
-    withPrinted (ExpectedButGot preface e g) p = ExpectedButGot (Just (maybe "" (++ "\n") preface ++ p)) e g
-    withPrinted (Reason r) p = Reason (r ++ "\n" ++ p)
-
--- | What `git range-diff` prints for two ranges, as a person would read it.
-rangeDiffText :: Repo -> String -> String -> IO String
-rangeDiffText (Repo dir) before after = readProcess "git" ["-C", dir, "range-diff", "--no-color", before, after] ""
 
 -- | Write files into the working copy. Whatever commit jj has it on gets them
 -- the next time jj runs, which snapshots it.

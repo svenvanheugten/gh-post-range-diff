@@ -7,7 +7,7 @@ module GhPostRangeDiff.Render (format) where
 
 import Data.List (group, intercalate)
 import GhPostRangeDiff.Wrap (wrap)
-import RangeDiff (Change (..), Commit (..), interdiffText, messageText)
+import RangeDiff (Change (..), Commit (..), Interdiff, interdiffLines, interdiffText, messageText)
 import RangeDiff.CommitSha (shaText)
 
 -- | The longest run of consecutive backticks in a string. Used to size a code
@@ -44,7 +44,7 @@ render :: Commit -> String
 render commit@(Commit change _ _) = case change of
   -- Only a changed commit carries an interdiff worth showing, and only a
   -- non-empty one is worth a spoiler.
-  Updated patch | patch' <- interdiffText patch, not (null patch') -> spoiler commit patch'
+  Updated patch | not (null (interdiffText patch)) -> spoiler commit patch
   _ -> headline markdownStrong commit
 
 -- | Hide a patch behind a spoiler that the commit's own headline titles, so
@@ -52,7 +52,7 @@ render commit@(Commit change _ _) = case change of
 --
 -- The blank lines inside the element are needed: without them GitHub renders
 -- the fence as literal text instead of as Markdown.
-spoiler :: Commit -> String -> String
+spoiler :: Commit -> Interdiff -> String
 spoiler commit patch =
   "<details>\n<summary>"
     ++ headline htmlStrong commit
@@ -65,14 +65,15 @@ spoiler commit patch =
 wrapWidth :: Int
 wrapWidth = 104
 
--- | Show a patch as a fenced diff block. The fence is longer than any backtick
--- run in the patch, so a line like ``` inside the interdiff can't close the
--- block early. The closing fence needs no newline in front of it: a
--- 'RangeDiff.Interdiff' ends on a line boundary.
-fenced :: String -> String
+-- | Show a patch as a fenced diff block, each line wrapped under the diff
+-- markers it opens with. The fence is longer than any backtick run in the
+-- patch, so a line like ``` inside the interdiff can't close the block early.
+-- The closing fence needs no newline in front of it: a 'RangeDiff.Interdiff'
+-- ends on a line boundary.
+fenced :: Interdiff -> String
 fenced patch = fence ++ "diff\n" ++ wrapped ++ fence
   where
-    wrapped = unlines (concatMap (wrap wrapWidth) (lines patch))
+    wrapped = unlines (concatMap (uncurry (wrap wrapWidth)) (interdiffLines patch))
     fence = replicate (max 3 (maxBacktickRun wrapped + 1)) '`'
 
 -- | Render the commits as a Markdown list, one item per commit.
