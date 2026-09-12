@@ -8,7 +8,31 @@ Sure, there is a "Compare" button on the _force push_ event...
 
 ... but if you've rebased the Pull Request on its base branch, then all changes in the base branch will _also_ show up there, which makes it really hard to understand what has changed in the Pull Request's _own_ commits. And even _if_ the base branch is completely unchanged, you will be unable to see _which_ commits have changed, and how. All you'll see is one big diff.
 
-This little program solves that by posting a pretty-printed version of the result of [`git range-diff`](https://git-scm.com/docs/git-range-diff) in your Pull Requests every time that they are pushed to. It takes care of the nitty-gritty involved in figuring out the correct commit ranges to compare, even when the base branch was updated simultaneously.
+This little program solves that by posting a pretty-printed version of the result of [`git range-diff`](https://git-scm.com/docs/git-range-diff) in your Pull Requests on every push:
+
+> ### Range-diff for push `3ce33dc` → `806d19e`
+>
+> 🟠 **Updated** `df10bd1` Add the widget
+>
+> ```diff
+> @@ src/widget.py (new)
+>  +class Widget:
+>  +    """A widget that does widget things."""
+>  +
+> -+    def __init__(self, name, timeout=30):
+> ++    def __init__(self, name, timeout=5):
+>  +        self.name = name
+>  +        self.timeout = timeout
+>  +
+> ```
+>
+> ⚪ **Unchanged** `869404b` Add a CLI for the widget
+>
+> 🔴 **Removed** `3ce33dc` Add a benchmark script
+>
+> 🟢 **Added** `806d19e` Test the widget
+
+In the real comment, GitHub turns each sha into a link to that commit.
 
 ## Supported base branch movements
 
