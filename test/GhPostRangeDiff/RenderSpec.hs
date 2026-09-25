@@ -105,37 +105,63 @@ data Tag = TagAdded | TagRemoved | TagUpdated | TagUnchanged
 
 data Header = Header Tag CommitSha CommitMessage
 
-parseTag :: String -> Either String (Tag, String)
-parseTag l
-  | Just r <- tag "\128994 **Added**" = Right (TagAdded, r)
-  | Just r <- tag "\128308 **Removed**" = Right (TagRemoved, r)
-  | Just r <- tag "\128992 **Updated**" = Right (TagUpdated, r)
-  | Just r <- tag "\9898 **Unchanged**" = Right (TagUnchanged, r)
+-- Emphasis for a headline that stands on its own, and for one inside a
+-- <summary>, which sits in a raw-HTML block that Markdown doesn't reach into.
+markdownStrong, htmlStrong :: String -> String
+markdownStrong s = "**" ++ s ++ "**"
+htmlStrong s = "<strong>" ++ s ++ "</strong>"
+
+parseTag :: (String -> String) -> String -> Either String (Tag, String)
+parseTag strong l
+  | Just r <- tag ("\128994 " ++ strong "Added") = Right (TagAdded, r)
+  | Just r <- tag ("\128308 " ++ strong "Removed") = Right (TagRemoved, r)
+  | Just r <- tag ("\128992 " ++ strong "Updated") = Right (TagUpdated, r)
+  | Just r <- tag ("\9898 " ++ strong "Unchanged") = Right (TagUnchanged, r)
   | otherwise = Left ("not a commit line: " ++ show l)
   where
     tag t = stripPrefix (t ++ " ") l
 
-parseHeader :: String -> Either String Header
-parseHeader l = do
-  (tag, rest) <- parseTag l
+parseHeader :: (String -> String) -> String -> Either String Header
+parseHeader strong l = do
+  (tag, rest) <- parseTag strong l
   case break (== ' ') rest of
     (s, ' ' : message) -> case commitSha s of
       Just sha -> Right (Header tag sha (commitMessage message))
       Nothing -> Left ("commit line has no sha: " ++ show l)
     _ -> Left ("commit line has no commit message: " ++ show l)
 
+-- | The headline out of a <summary> line, if the line is one.
+summaryHeadline :: String -> Maybe String
+summaryHeadline l = stripPrefix "<summary>" l >>= stripSuffix "</summary>"
+  where
+    stripSuffix suffix = fmap reverse . stripPrefix (reverse suffix) . reverse
+
 toCommits :: [Block] -> Either String [Commit]
 toCommits [] = Right []
+-- A spoiler is titled by the headline of the commit it belongs to, and holds
+-- that commit's interdiff.
+toCommits
+  ( PlainLineOfText "<details>"
+      : PlainLineOfText summary
+      : CodeBlock "diff" body
+      : PlainLineOfText "</details>"
+      : bs
+    )
+    | Just l <- summaryHeadline summary = do
+        Header tag sha message <- parseHeader htmlStrong l
+        case tag of
+          TagUpdated -> (Commit (Updated (interdiff (unlines body))) sha message :) <$> toCommits bs
+          _ -> Left ("spoiler on a commit that isn't updated: " ++ show l)
 toCommits (PlainLineOfText l : bs) = do
-  Header tag sha message <- parseHeader l
-  let (change, bs') = case (tag, bs) of
-        -- A fenced diff belongs to the updated commit right above it.
-        (TagUpdated, CodeBlock "diff" body : rest) -> (Updated (interdiff (unlines body)), rest)
-        (TagUpdated, _) -> (Updated (interdiff ""), bs)
-        (TagAdded, _) -> (Added, bs)
-        (TagRemoved, _) -> (Removed, bs)
-        (TagUnchanged, _) -> (Unchanged, bs)
-  (Commit change sha message :) <$> toCommits bs'
+  Header tag sha message <- parseHeader markdownStrong l
+  let change = case tag of
+        -- A bare headline for an updated commit means its interdiff was empty,
+        -- so it got no spoiler.
+        TagUpdated -> Updated (interdiff "")
+        TagAdded -> Added
+        TagRemoved -> Removed
+        TagUnchanged -> Unchanged
+  (Commit change sha message :) <$> toCommits bs
 toCommits (CodeBlock info _ : _) = Left ("stray code block: " ++ show info)
 
 -- | Read 'format' output back into the commits it was rendered from.
