@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-25
+
 ### Changed
 
 - The interdiff of an updated commit is now collapsed behind a spoiler, so that a long interdiff doesn't take up the entire page (https://github.com/svenvanheugten/gh-post-range-diff/pull/71)
