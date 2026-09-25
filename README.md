@@ -12,21 +12,27 @@ This little program solves that by posting a pretty-printed version of [`git ran
 
 > ### Range-diff for push `3ce33dc` → `806d19e`
 >
-> 🟠 **Updated** `df10bd1` Add the widget
+> ⚪ **Unchanged** `df10bd1` Add the widget
+>
+> <details>
+> <summary>🟠 <strong>Updated</strong> <code>869404b</code> Add a CLI for the widget</summary>
 >
 > ```diff
-> @@ src/widget.py (new)
->  +class Widget:
->  +    """A widget that does widget things."""
+> @@ src/cli.py (new)
+>  +import argparse
 >  +
-> -+    def __init__(self, name, timeout=30):
-> ++    def __init__(self, name, timeout=5):
->  +        self.name = name
->  +        self.timeout = timeout
+>  +from widget import Widget
+>  +
+>  +def main():
+>  +    parser = argparse.ArgumentParser()
+> -+    parser.add_argument("--timeout", type=int, default=30)
+> ++    parser.add_argument("--timeout", type=int, default=5)
+>  +    args = parser.parse_args()
+>  +    Widget("cli", args.timeout).run()
 >  +
 > ```
 >
-> ⚪ **Unchanged** `869404b` Add a CLI for the widget
+> </details>
 >
 > 🔴 **Removed** `3ce33dc` Add a benchmark script
 >
