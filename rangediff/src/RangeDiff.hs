@@ -129,9 +129,11 @@ newtype Handle = Handle
 git :: FilePath -> Handle
 git dir = Handle {rangeDiff = gitRangeDiff dir}
 
--- Read what `git range-diff` prints for the two ranges.
+-- Read what `git range-diff` prints for the two ranges. Colour is asked off
+-- outright, since a repo or user configured to have it always would otherwise
+-- wrap every header in escape codes.
 gitRangeDiff :: FilePath -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
 gitRangeDiff dir oldBase oldHead newBase newHead = parse <$> readProcess "git" args ""
   where
-    args = ["-C", dir, "range-diff", range oldBase oldHead, range newBase newHead]
+    args = ["-C", dir, "range-diff", "--no-color", range oldBase oldHead, range newBase newHead]
     range a b = shaText a ++ ".." ++ shaText b
