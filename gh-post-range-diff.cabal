@@ -95,8 +95,7 @@ executable gh-post-range-diff
         gh-post-range-diff,
         gh-post-range-diff:rangediff,
 
--- Builds real repos, rewriting them with jujutsu and reading them with git, so
--- it needs both `jj` and `git` on PATH at run time.
+-- Runs against fakes of git and GitHub, so it needs nothing on PATH.
 test-suite spec
     import:           defaults
     type:             exitcode-stdio-1.0
