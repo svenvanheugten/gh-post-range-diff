@@ -147,6 +147,16 @@ spec = do
                          ++ [removed tenOld "Number 10", added eleven "Number 11", added twelve "Number 12"]
                      )
 
+    it "reads a range-diff in a repo that has git colour it" $ \repo -> do
+      configure repo "color.ui" "always"
+      root <- initial repo
+      [w] <- stack repo root [addWidget "30"]
+      old <- version repo root w
+      amend repo w [("widget.py", widget "5")]
+      now <- version repo root w
+      w' <- sha repo w
+      rangeDiff repo old now `shouldRead` [updated timeoutTo5 w' "Add the widget"]
+
     it "keeps a subject verbatim, spaces, colons and markers included" $ \repo -> do
       root <- initial repo
       let subject = "fix(cli):  keep  `--timeout`  1:  abc ! 2:  def"

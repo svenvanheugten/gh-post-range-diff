@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Fix the range-diff failing to parse when git is configured to always colour its output (https://github.com/svenvanheugten/gh-post-range-diff/pull/76)
+
 ## [0.6.0] - 2026-09-25
 
 ### Changed

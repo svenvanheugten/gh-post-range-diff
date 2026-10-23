@@ -10,6 +10,7 @@
 module RangeDiff.Test.Repo
   ( Repo,
     inRepos,
+    configure,
     ChangeId,
     Patch (..),
     initial,
@@ -111,6 +112,11 @@ withRepo act = withSystemTempDirectory "repo" $ \tmp -> do
   createDirectory dir
   _ <- jj ["git", "init", "--colocate", dir]
   act (Repo dir)
+
+-- | Set a git config variable in the repo itself, where it outranks whatever
+-- the environment sets.
+configure :: Repo -> String -> String -> IO ()
+configure (Repo dir) k v = void (readProcess "git" ["-C", dir, "config", k, v] "")
 
 -- | The commit everything else grows from. jj made a commit to initialise the
 -- repo on; this is that commit, given something to hold and something to say.
