@@ -42,12 +42,14 @@ In the real comment, GitHub turns each sha into a link to that commit.
 
 ## Supported base branch movements
 
-The tool can unambiguously figure out the old and new base ref, as long as the base branch movements fall into one of these categories, which should cover _most_ common workflows:
+To show only the changes to your own commits, the tool needs to know where the old and the new version of your branch forked off the base branch.
 
-- A base branch that nobody _ever_ force-pushes to, and which only grows through ordinary pushes, e.g. `main`. Your PR branch is allowed to lag behind it, and doesn't have to be based on the latest version.
-- A base branch that receives _any_ force pushes. Your PR branch _always_ needs to be based on the latest version. One way to guarantee that is to use [`--update-refs`](https://andrewlock.net/working-with-stacked-branches-in-git-is-easier-with-update-refs/), and to always push the whole stack simultaneously.
+It can always work that out in these two cases, which should cover _most_ common use cases:
 
-Both of these categories are extensively covered by tens of thousands of [property-based tests](https://en.wikipedia.org/wiki/Software_testing#Property_testing). Other base branch movements aren't supported, and might lead to hard-to-read reports.
+- _The base branch only ever grows_: Nobody force-pushes to it, which is usually true for PR's that target a protected branch like `main`. Your branch can fork off any commit on it, so you don't have to rebase onto the latest version before you push.
+- _Your branch is always on the latest version of the base branch_: In this case, the base branch is free to be force-pushed. This is the usual case for stacked PRs, where your PR targets another PR's branch. The easiest way to stay on the latest version is to rebase the whole stack with [`--update-refs`](https://andrewlock.net/working-with-stacked-branches-in-git-is-easier-with-update-refs/) and push all the branches at once, and to never push up just one of them.
+
+Both cases are covered by tens of thousands of [property-based tests](https://en.wikipedia.org/wiki/Software_testing#Property_testing). Anything outside them isn't supported. In particular, once the base branch has been force-pushed at any point while your PR is open, every push to your branch has to be on the latest version of the base branch, or the report will include commits from the base branch.
 
 ## GitHub Actions
 
