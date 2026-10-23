@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Report a reworded commit under the message it was reworded to. It was reported under the message it was being rewritten away from, which is the one `git range-diff` puts on its header line. (https://github.com/svenvanheugten/gh-post-range-diff/pull/78)
+
 ### Fixed
 
 - Fix the range-diff failing to parse when git is configured to always colour its output (https://github.com/svenvanheugten/gh-post-range-diff/pull/76)
