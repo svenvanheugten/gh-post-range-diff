@@ -9,8 +9,14 @@ import Data.List (dropWhileEnd)
 continuation :: String
 continuation = "\8618 " -- ↪
 
+-- | GitHub's tab size: a tab moves on to the next multiple of this many
+-- columns, unless a reader has set a tab size of their own.
+tabStop :: Int
+tabStop = 8
+
 -- | The column a character leaves the cursor at, when it starts at column @c@.
 advance :: Int -> Char -> Int
+advance c '\t' = (c `div` tabStop + 1) * tabStop
 advance c _ = c + 1
 
 -- | How many columns a line takes up on GitHub.
@@ -39,6 +45,9 @@ wrap w l
 -- A word that won't fit behind @next@, the lead of the line after, will be cut
 -- wherever the break falls, so breaking before it would only waste the space
 -- it could have taken here. Such a word is cut where the space runs out.
+--
+-- A tab is measured where it ends up: in the piece, behind @lead@, rather than
+-- where it was in the line the piece came from.
 breakAfter :: Int -> String -> String -> String -> (String, String)
 breakAfter w next lead s
   | n >= length s = (s, "")

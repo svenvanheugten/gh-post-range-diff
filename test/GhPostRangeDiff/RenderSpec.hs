@@ -40,7 +40,7 @@ instance Arbitrary Interdiff where
           ]
       longLine = do
         n <- choose (wrapWidth, 3 * wrapWidth)
-        concat <$> vectorOf n (elements ["x", " ", "`"])
+        concat <$> vectorOf n (elements ["x", " ", "`", "\t"])
 
   -- Shrinking the text can drop the trailing newline, which 'interdiff' then
   -- puts straight back; dropping those candidates keeps shrinking from looping
@@ -83,6 +83,14 @@ wrapWidth = 104
 
 continuation :: String
 continuation = "\8618 "
+
+-- | How many columns a line takes up on GitHub, where a tab moves on to the
+-- next multiple of 8.
+width :: String -> Int
+width = foldl advance 0
+  where
+    advance c '\t' = (c `div` 8 + 1) * 8
+    advance c _ = c + 1
 
 -- | Join every wrapped line of a diff block back onto the line it came from.
 unwrap :: [String] -> [String]
@@ -200,7 +208,7 @@ codeLines s = case blocks (lines s) of
 -- | Whether any line of the commit's interdiff is too long to fit, so that
 -- `format` had to wrap it.
 wrapped :: Commit -> Bool
-wrapped (Commit (Updated patch) _ _) = any ((> wrapWidth) . length) (lines (interdiffText patch))
+wrapped (Commit (Updated patch) _ _) = any ((> wrapWidth) . width) (lines (interdiffText patch))
 wrapped _ = False
 
 -- | Whether a three-backtick fence would have been closed by the interdiff
@@ -222,4 +230,4 @@ spec = describe "format" $ do
     checkCoverage $
       forAllShrink (resize 8 (listOf arbitrary)) shrink $ \commits ->
         cover 10 (any wrapped commits) "wrapped line" $
-          all ((<= wrapWidth) . length) (codeLines (format commits))
+          all ((<= wrapWidth) . width) (codeLines (format commits))

@@ -28,6 +28,14 @@ instance Arbitrary Case where
   -- Only ever shrink what follows the markers, so that a line keeps them.
   shrink (Case w l) = [Case w (take 2 l ++ body) | body <- shrink (drop 2 l)]
 
+-- | How many columns a line takes up on GitHub, where a tab moves on to the
+-- next multiple of 8.
+width :: String -> Int
+width = foldl advance 0
+  where
+    advance c '\t' = (c `div` 8 + 1) * 8
+    advance c _ = c + 1
+
 isGap :: Char -> Bool
 isGap c = c == ' ' || c == '\t'
 
@@ -52,7 +60,7 @@ breaks l ls = do
 -- | Whether a break came before the line was full: whether the next
 -- character would still have fit on it.
 early :: Int -> (String, String) -> Bool
-early w (line, rest) = length (line ++ take 1 rest) <= w
+early w (line, rest) = width (line ++ take 1 rest) <= w
 
 -- | Check something of every break in the line a case wraps.
 forEveryBreak :: (Testable prop) => (Case -> (String, String) -> prop) -> Case -> Property
@@ -65,7 +73,7 @@ forEveryBreak check c@(Case w l) = case breaks l (wrap w l) of
 property' :: (Testable prop) => (Case -> prop) -> Property
 property' p = checkCoverage $ forAllShrink arbitrary shrink $ \c@(Case w l) ->
   let bs = fromMaybe [] (breaks l (wrap w l))
-   in cover 10 (length l <= w) "fits" $
+   in cover 10 (width l <= w) "fits" $
         cover 10 (any (early w) bs) "broken early" $
           cover 10 (not (all (early w) bs)) "broken when full" $
             cover 10 ('\t' `elem` l) "has a tab" $
@@ -102,9 +110,15 @@ spec = describe "wrap" $ do
                    "+ ↪ fghijklmnopqrst"
                  ]
 
+  it "counts a tab up to the next multiple of 8" $
+    wrap 20 "+ \tfoo\tbar baz qux"
+      `shouldBe` [ "+ \tfoo\tbar ",
+                   "+ ↪ baz qux"
+                 ]
+
   it "leaves a line that fits as it is" $
     property' $ \(Case w l) ->
-      length l > w || wrap w l == [l]
+      width l > w || wrap w l == [l]
 
   it "loses nothing of the line" $
     property' $ \(Case w l) ->
@@ -113,7 +127,7 @@ spec = describe "wrap" $ do
   it "fits every line it breaks a line into" $
     property' $ \(Case w l) ->
       counterexample (unlines (wrap w l)) $
-        all ((<= w) . length) (wrap w l)
+        all ((<= w) . width) (wrap w l)
 
   it "breaks early only after a space or tab" $
     property' $
@@ -124,13 +138,13 @@ spec = describe "wrap" $ do
     property' $
       forEveryBreak $ \(Case w _) (line, rest) ->
         let next = takeWhile (not . isGap) rest
-         in length (line ++ take (length next + 1) rest) > w
+         in width (line ++ take (length next + 1) rest) > w
 
   it "breaks early only before a word that fits on the next line" $
     property' $
       forEveryBreak $ \(Case w l) b@(_, rest) ->
         not (early w b)
-          || length (continuationOf l ++ takeWhile (not . isGap) rest) <= w
+          || width (continuationOf l ++ takeWhile (not . isGap) rest) <= w
 
   it "breaks a word only if it is too long for a line of its own" $
     property' $
@@ -139,4 +153,4 @@ spec = describe "wrap" $ do
             end = takeWhile (not . isGap) rest
          in null start
               || null end
-              || length (continuationOf l ++ start ++ end) > w
+              || width (continuationOf l ++ start ++ end) > w
