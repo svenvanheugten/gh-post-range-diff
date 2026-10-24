@@ -23,17 +23,24 @@ instance Arbitrary CommitMessage where
 
   shrink m = filter (/= m) (map commitMessage (shrink (messageText m)))
 
--- An interdiff: arbitrary text, built from chunks so that newlines and runs
--- of backticks both turn up often.
+-- An interdiff: arbitrary text, built from chunks so that newlines, runs of
+-- backticks, and lines too long to fit all turn up often.
+--
+-- It never holds a ↪, which is what 'format' marks a wrapped line with: a line
+-- of its own that read like one couldn't be told apart from a wrapped line.
 instance Arbitrary Interdiff where
-  arbitrary = interdiff . concat <$> listOf chunk
+  arbitrary = interdiff . concatMap (filter (/= '\8618')) <$> listOf chunk
     where
       chunk =
         oneof
           [ getPrintableString <$> arbitrary,
             pure "\n",
-            (`replicate` '`') <$> choose (1, 6)
+            (`replicate` '`') <$> choose (1, 6),
+            longLine
           ]
+      longLine = do
+        n <- choose (wrapWidth, 3 * wrapWidth)
+        concat <$> vectorOf n (elements ["x", " ", "`", "\t"])
 
   -- Shrinking the text can drop the trailing newline, which 'interdiff' then
   -- puts straight back; dropping those candidates keeps shrinking from looping
@@ -68,6 +75,29 @@ instance Arbitrary Commit where
     [Commit change' sha message | change' <- shrink change]
       ++ [Commit change sha' message | sha' <- shrink sha]
       ++ [Commit change sha message' | message' <- shrink message]
+
+-- | The widest 'format' shows a line of an interdiff, and what it starts each
+-- line that carries on from the one above with, after the two diff markers.
+wrapWidth :: Int
+wrapWidth = 104
+
+continuation :: String
+continuation = "\8618 "
+
+-- | How many columns a line takes up on GitHub, where a tab moves on to the
+-- next multiple of 8.
+width :: String -> Int
+width = foldl advance 0
+  where
+    advance c '\t' = (c `div` 8 + 1) * 8
+    advance c _ = c + 1
+
+-- | Join every wrapped line of a diff block back onto the line it came from.
+unwrap :: [String] -> [String]
+unwrap (l : c : ls)
+  | Just rest <- stripPrefix (take 2 l ++ continuation) c = unwrap ((l ++ rest) : ls)
+unwrap (l : ls) = l : unwrap ls
+unwrap [] = []
 
 data Block = PlainLineOfText String | CodeBlock String [String]
 
@@ -150,7 +180,7 @@ toCommits
     | Just l <- summaryHeadline summary = do
         Header tag sha message <- parseHeader htmlStrong l
         case tag of
-          TagUpdated -> (Commit (Updated (interdiff (unlines body))) sha message :) <$> toCommits bs
+          TagUpdated -> (Commit (Updated (interdiff (unlines (unwrap body)))) sha message :) <$> toCommits bs
           _ -> Left ("spoiler on a commit that isn't updated: " ++ show l)
 toCommits (PlainLineOfText l : bs) = do
   Header tag sha message <- parseHeader markdownStrong l
@@ -168,6 +198,19 @@ toCommits (CodeBlock info _ : _) = Left ("stray code block: " ++ show info)
 reparse :: String -> Either String [Commit]
 reparse s = blocks (lines s) >>= toCommits
 
+-- | The lines inside the code blocks of a Markdown string. Fails if it can't
+-- be split into blocks.
+codeLines :: String -> [String]
+codeLines s = case blocks (lines s) of
+  Right bs -> concat [body | CodeBlock _ body <- bs]
+  Left err -> error err
+
+-- | Whether any line of the commit's interdiff is too long to fit, so that
+-- `format` had to wrap it.
+wrapped :: Commit -> Bool
+wrapped (Commit (Updated patch) _ _) = any ((> wrapWidth) . width) (lines (interdiffText patch))
+wrapped _ = False
+
 -- | Whether a three-backtick fence would have been closed by the interdiff
 -- itself, so that `format` had to widen it.
 widened :: Commit -> Bool
@@ -175,9 +218,16 @@ widened (Commit (Updated patch) _ _) = "```" `isInfixOf` interdiffText patch
 widened _ = False
 
 spec :: Spec
-spec = describe "format" $
+spec = describe "format" $ do
   it "renders commits that can losslessly be converted back" $
     checkCoverage $
       forAllShrink (resize 8 (listOf arbitrary)) shrink $ \commits ->
         cover 10 (any widened commits) "widened fence" $
-          reparse (format commits) === Right commits
+          cover 10 (any wrapped commits) "wrapped line" $
+            reparse (format commits) === Right commits
+
+  it "wraps every line of an interdiff to fit" $
+    checkCoverage $
+      forAllShrink (resize 8 (listOf arbitrary)) shrink $ \commits ->
+        cover 10 (any wrapped commits) "wrapped line" $
+          all ((<= wrapWidth) . width) (codeLines (format commits))

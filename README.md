@@ -38,7 +38,7 @@ This little program solves that by posting a pretty-printed version of [`git ran
 >
 > 🟢 **Added** `806d19e` Test the widget
 
-In the real comment, GitHub turns each sha into a link to that commit.
+Long lines are wrapped to fit the width of a PR comment, carrying on below under the same diff markers after a ↪. In the real comment, GitHub turns each sha into a link to that commit.
 
 ## Supported base branch movements
 
