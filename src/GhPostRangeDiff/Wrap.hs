@@ -9,6 +9,14 @@ import Data.List (dropWhileEnd)
 continuation :: String
 continuation = "\8618 " -- ↪
 
+-- | The column a character leaves the cursor at, when it starts at column @c@.
+advance :: Int -> Char -> Int
+advance c _ = c + 1
+
+-- | How many columns a line takes up on GitHub.
+width :: String -> Int
+width = foldl' advance 0
+
 -- | Break a line of an interdiff over as many lines as it takes to fit in @w@
 -- columns. Every line it is broken into starts with the same two diff
 -- markers, so GitHub colours it as the line it is part of, and each one but
@@ -16,7 +24,7 @@ continuation = "\8618 " -- ↪
 -- space where there is one to break at, so that words stay whole.
 wrap :: Int -> String -> [String]
 wrap w l
-  | length l <= w = [l]
+  | width l <= w = [l]
   | otherwise = first : map (lead ++) (chop more)
   where
     lead = take 2 l ++ continuation
@@ -34,9 +42,11 @@ wrap w l
 breakAfter :: Int -> String -> String -> String -> (String, String)
 breakAfter w next lead s
   | n >= length s = (s, "")
-  | k > 0, length (next ++ takeWhile (/= ' ') (drop k s)) <= w = splitAt k s
+  | k > 0, width (next ++ takeWhile (/= ' ') (drop k s)) <= w = splitAt k s
   | otherwise = splitAt n s
   where
-    n = max 1 (w - length lead)
+    -- The column each character of @s@ leaves the cursor at, behind @lead@.
+    ends = drop 1 (scanl advance (width lead) s)
+    n = max 1 (length (takeWhile (<= w) ends))
     -- Just past the last space that fits, if there is one.
     k = length (dropWhileEnd (/= ' ') (take n s))
