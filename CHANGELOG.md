@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Wrap interdiff lines longer than 104 characters, since GitHub scrolls a code block sideways rather than wrapping it. A wrapped line carries on below under the same diff markers, after a ↪. (https://github.com/svenvanheugten/gh-post-range-diff/pull/80)
 - Report a reworded commit under the message it was reworded to. It was reported under the message it was being rewritten away from, which is the one `git range-diff` puts on its header line. (https://github.com/svenvanheugten/gh-post-range-diff/pull/78)
 
 ### Fixed

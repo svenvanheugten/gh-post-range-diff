@@ -6,6 +6,7 @@
 module GhPostRangeDiff.Render (format) where
 
 import Data.List (group, intercalate)
+import GhPostRangeDiff.Wrap (wrap)
 import RangeDiff (Change (..), Commit (..), interdiffText, messageText)
 import RangeDiff.CommitSha (shaText)
 
@@ -59,14 +60,20 @@ spoiler commit patch =
     ++ fenced patch
     ++ "\n\n</details>"
 
+-- | The widest a line of an interdiff is shown: a PR comment on a desktop
+-- screen is about this wide.
+wrapWidth :: Int
+wrapWidth = 104
+
 -- | Show a patch as a fenced diff block. The fence is longer than any backtick
 -- run in the patch, so a line like ``` inside the interdiff can't close the
 -- block early. The closing fence needs no newline in front of it: a
 -- 'RangeDiff.Interdiff' ends on a line boundary.
 fenced :: String -> String
-fenced patch = fence ++ "diff\n" ++ patch ++ fence
+fenced patch = fence ++ "diff\n" ++ wrapped ++ fence
   where
-    fence = replicate (max 3 (maxBacktickRun patch + 1)) '`'
+    wrapped = unlines (concatMap (wrap wrapWidth) (lines patch))
+    fence = replicate (max 3 (maxBacktickRun wrapped + 1)) '`'
 
 -- | Render the commits as a Markdown list, one item per commit.
 format :: [Commit] -> String
