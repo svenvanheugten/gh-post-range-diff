@@ -7,7 +7,7 @@ import Test.Hspec
 import Test.QuickCheck
 
 -- | A width to wrap at, and a line of an interdiff to wrap: two diff markers,
--- then words and the spaces between them. Most words are short, but
+-- then words and the spaces and tabs between them. Most words are short, but
 -- now and then one is about as long as a line, or longer.
 data Case = Case Int String
   deriving (Show)
@@ -23,10 +23,13 @@ instance Arbitrary Case where
       word w = do
         n <- frequency [(9, choose (1, 8)), (1, choose (w - 8, 2 * w))]
         vectorOf n (elements "ab`")
-      gap = elements [" ", "  "]
+      gap = elements [" ", "  ", "\t"]
 
   -- Only ever shrink what follows the markers, so that a line keeps them.
   shrink (Case w l) = [Case w (take 2 l ++ body) | body <- shrink (drop 2 l)]
+
+isGap :: Char -> Bool
+isGap c = c == ' ' || c == '\t'
 
 -- | What 'wrap' starts each line that carries on from the one above with.
 continuationOf :: String -> String
@@ -65,7 +68,8 @@ property' p = checkCoverage $ forAllShrink arbitrary shrink $ \c@(Case w l) ->
    in cover 10 (length l <= w) "fits" $
         cover 10 (any (early w) bs) "broken early" $
           cover 10 (not (all (early w) bs)) "broken when full" $
-            p c
+            cover 10 ('\t' `elem` l) "has a tab" $
+              p c
 
 spec :: Spec
 spec = describe "wrap" $ do
@@ -92,6 +96,12 @@ spec = describe "wrap" $ do
                    "+ ↪ path ok"
                  ]
 
+  it "breaks after a tab as well as a space" $
+    wrap 20 "+ abcde\tfghijklmnopqrst"
+      `shouldBe` [ "+ abcde\t",
+                   "+ ↪ fghijklmnopqrst"
+                 ]
+
   it "leaves a line that fits as it is" $
     property' $ \(Case w l) ->
       length l > w || wrap w l == [l]
@@ -105,28 +115,28 @@ spec = describe "wrap" $ do
       counterexample (unlines (wrap w l)) $
         all ((<= w) . length) (wrap w l)
 
-  it "breaks early only after a space" $
+  it "breaks early only after a space or tab" $
     property' $
       forEveryBreak $ \(Case w _) b@(line, _) ->
-        not (early w b) || last line == ' '
+        not (early w b) || isGap (last line)
 
   it "breaks early only when the next word doesn't fit" $
     property' $
       forEveryBreak $ \(Case w _) (line, rest) ->
-        let next = takeWhile (/= ' ') rest
+        let next = takeWhile (not . isGap) rest
          in length (line ++ take (length next + 1) rest) > w
 
   it "breaks early only before a word that fits on the next line" $
     property' $
       forEveryBreak $ \(Case w l) b@(_, rest) ->
         not (early w b)
-          || length (continuationOf l ++ takeWhile (/= ' ') rest) <= w
+          || length (continuationOf l ++ takeWhile (not . isGap) rest) <= w
 
   it "breaks a word only if it is too long for a line of its own" $
     property' $
       forEveryBreak $ \(Case w l) (line, rest) ->
-        let start = reverse (takeWhile (/= ' ') (reverse line))
-            end = takeWhile (/= ' ') rest
+        let start = reverse (takeWhile (not . isGap) (reverse line))
+            end = takeWhile (not . isGap) rest
          in null start
               || null end
               || length (continuationOf l ++ start ++ end) > w
