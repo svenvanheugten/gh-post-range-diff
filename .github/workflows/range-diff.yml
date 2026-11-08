@@ -12,4 +12,7 @@ jobs:
   range-diff:
     runs-on: ubuntu-latest
     steps:
-      - uses: svenvanheugten/gh-post-range-diff@v0.6.0
+      # The action is taken from the PR itself, which builds the tool from the
+      # PR's source, so the report on a push is made by the version pushed.
+      - uses: actions/checkout@v7
+      - uses: ./

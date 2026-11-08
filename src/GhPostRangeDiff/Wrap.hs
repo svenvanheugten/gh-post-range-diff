@@ -5,7 +5,7 @@ module GhPostRangeDiff.Wrap (wrap) where
 import Data.List (dropWhileEnd)
 
 -- | What a line that carries on from the one above starts with, straight after
--- the two diff markers it repeats.
+-- the diff markers it repeats.
 continuation :: String
 continuation = "\8618 " -- ↪
 
@@ -24,19 +24,21 @@ width :: String -> Int
 width = foldl' advance 0
 
 -- | Break a line of an interdiff over as many lines as it takes to fit in @w@
--- columns. Every line it is broken into starts with the same two diff
--- markers, so GitHub colours it as the line it is part of, and each one but
--- the first goes on to say that it is a 'continuation'. Breaks fall after a
--- space or tab where there is one to break at, so that words stay whole.
-wrap :: Int -> String -> [String]
-wrap w l
-  | width l <= w = [l]
-  | otherwise = first : map (lead ++) (chop more)
+-- columns, given the diff markers @m@ it opens with and the @s@ that follows
+-- them. Every line it is broken into starts with those same markers, so GitHub
+-- colours it as the line it is part of, and each one but the first goes on to
+-- say that it is a 'continuation'. A line that opens with none, such as a
+-- header, carries on under none. Breaks fall after a space or tab where there
+-- is one to break at, so that words stay whole.
+wrap :: Int -> String -> String -> [String]
+wrap w m s
+  | width (m ++ s) <= w = [m ++ s]
+  | otherwise = (m ++ first) : map (lead ++) (chop more)
   where
-    lead = take 2 l ++ continuation
-    (first, more) = breakAfter w lead "" l
+    lead = m ++ continuation
+    (first, more) = breakAfter w lead m s
     chop "" = []
-    chop s = let (c, s') = breakAfter w lead lead s in c : chop s'
+    chop s' = let (c, s'') = breakAfter w lead lead s' in c : chop s''
 
 -- | Split off as much of @s@ as fits in @w@ columns behind @lead@, ending it on
 -- the last space or tab it holds. It takes at least one character, so that

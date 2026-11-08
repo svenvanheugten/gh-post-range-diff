@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Take the range-diff with `jj` where every commit in both ranges carries a jj change id and `jj` is installed (https://github.com/svenvanheugten/gh-post-range-diff/pull/81)
+
 ### Changed
 
 - Wrap interdiff lines longer than 104 characters, since GitHub scrolls a code block sideways rather than wrapping it. A wrapped line carries on below under the same diff markers, after a ↪. Tabs count as wide as GitHub shows them. (https://github.com/svenvanheugten/gh-post-range-diff/pull/80)
