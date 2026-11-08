@@ -76,7 +76,7 @@ jobs:
   range-diff:
     runs-on: ubuntu-latest
     steps:
-      - uses: svenvanheugten/gh-post-range-diff@v0.6.0
+      - uses: svenvanheugten/gh-post-range-diff@v0.7.0
 ```
 
 ## Manual use
