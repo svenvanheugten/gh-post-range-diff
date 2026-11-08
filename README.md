@@ -53,9 +53,9 @@ Both cases are covered by tens of thousands of [property-based tests](https://en
 
 ## Sharper reports for [jj](https://jj-vcs.github.io/jj/) repositories
 
-`git range-diff` has to _guess_ which commit of the old version of your branch is which commit of the new one, by comparing how alike their diffs are, and it can guess wrong, reporting one rewritten commit as a commit dropped and an unrelated commit added.
+`git range-diff` has to _guess_ which commit of the old version of your branch is which commit of the new one, by comparing how alike their diffs are, and it can guess wrong, for example by reporting a rewritten commit as combination of a dropped and an added commit, or by simply matching up commits that are completely unrelated.
 
-Commits made with [jj](https://jj-vcs.github.io/jj/) carry a change ID that survives every rewrite, so there is nothing to guess. Where every commit in both versions of the branch carries one, and `jj` is on the `PATH`, the report is worked out with `jj interdiff` instead. Commits are matched by change ID, and each rewrite is shown as a diff of the commits themselves, rather than of their formatted patches.
+Commits made with [jj](https://jj-vcs.github.io/jj/), however, carry a change ID that survives every rewrite, which means that the tool doesn't have to guess. If every commit in _both_ versions of the branch was made with `jj`, and `jj` is on the `PATH`, the report will automatically be worked out with `jj interdiff` instead. Commits are matched by change ID, and each rewrite is shown as a diff of the commits themselves, rather than of their formatted patches.
 
 ## GitHub Actions
 
