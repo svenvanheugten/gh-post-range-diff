@@ -6,7 +6,7 @@ module GhPostRangeDiff.CliSpec (spec) where
 import Control.Exception (ErrorCall (..))
 import GhPostRangeDiff.Git (abbrev)
 import GhPostRangeDiff.PullRequest (PullRequest, base, checkout, cli, comments, inPullRequests, number, push, repo, root)
-import GhPostRangeDiff.Render (format)
+import GhPostRangeDiff.Render (UnchangedVisibility (..), format)
 import RangeDiff qualified
 import RangeDiff.Auto (auto)
 import RangeDiff.CommitSha (CommitSha, shaText)
@@ -38,9 +38,10 @@ take' :: Int -> String
 take' n = "The widget, take " ++ show n ++ ".\n"
 
 -- | The comment on the push old..new: its marker, a header naming the push,
--- and the range-diff of the two versions of the branch it is between.
-report :: PullRequest -> CommitSha -> CommitSha -> IO String
-report pr old new = do
+-- and the range-diff of the two versions of the branch it is between, with the
+-- unchanged commits shown or left out as @visibility@ says.
+report :: PullRequest -> UnchangedVisibility -> CommitSha -> CommitSha -> IO String
+report pr visibility old new = do
   b <- base pr
   commits <- RangeDiff.rangeDiff (auto (checkout pr)) b old b new
   pure $
@@ -49,10 +50,10 @@ report pr old new = do
         "### Range-diff for push " ++ abbrev old ++ " → " ++ abbrev new
       ]
       ++ "\n"
-      ++ format commits
+      ++ format visibility commits
 
 usage :: Selector ErrorCall
-usage (ErrorCall m) = m == "usage: gh-post-range-diff <pr> [<before-sha> <after-sha>]"
+usage (ErrorCall m) = m == "usage: gh-post-range-diff [--hide-unchanged] <pr> [<before-sha> <after-sha>]"
 
 spec :: Spec
 spec = inPullRequests $ do
@@ -62,14 +63,14 @@ spec = inPullRequests $ do
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
       cli pr [number, shaText w1, shaText w2] `shouldReturn` Nothing
-      expected <- report pr w1 w2
+      expected <- report pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
     it "posts the range-diff of a push that only added commits" $ \pr -> do
       (g, g1) <- gadget pr
       (_, w1) <- widget pr g
       cli pr [number, shaText g1, shaText w1] `shouldReturn` Nothing
-      expected <- report pr g1 w1
+      expected <- report pr ShowUnchanged g1 w1
       comments pr `shouldReturn` [expected]
 
     it "posts it only once, however often it is run" $ \pr -> do
@@ -79,7 +80,15 @@ spec = inPullRequests $ do
       let args = [number, shaText w1, shaText w2]
       cli pr args `shouldReturn` Nothing
       cli pr args `shouldReturn` Just ("Already reported on " ++ abbrev w1 ++ ".." ++ abbrev w2 ++ ". Nothing to do.")
-      expected <- report pr w1 w2
+      expected <- report pr ShowUnchanged w1 w2
+      comments pr `shouldReturn` [expected]
+
+    it "leaves the unchanged commits out with --hide-unchanged" $ \pr -> do
+      (g, _) <- gadget pr
+      (w, w1) <- widget pr g
+      w2 <- rework pr w 2
+      cli pr ["--hide-unchanged", number, shaText w1, shaText w2] `shouldReturn` Nothing
+      expected <- report pr HideUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
   describe "given only the pull request" $ do
@@ -89,7 +98,7 @@ spec = inPullRequests $ do
       w2 <- rework pr w 2
       w3 <- rework pr w 3
       cli pr [number] `shouldReturn` Nothing
-      expected <- report pr w2 w3
+      expected <- report pr ShowUnchanged w2 w3
       comments pr `shouldReturn` [expected]
 
     it "says so where nothing was force-pushed" $ \pr -> do
@@ -98,6 +107,19 @@ spec = inPullRequests $ do
       cli pr [number] `shouldReturn` Just "No force-push events on this PR. Nothing to diff."
       comments pr `shouldReturn` []
 
+    it "leaves the unchanged commits out with --hide-unchanged after the number" $ \pr -> do
+      (g, _) <- gadget pr
+      (w, _) <- widget pr g
+      w2 <- rework pr w 2
+      w3 <- rework pr w 3
+      cli pr [number, "--hide-unchanged"] `shouldReturn` Nothing
+      expected <- report pr HideUnchanged w2 w3
+      comments pr `shouldReturn` [expected]
+
   it "fails on arguments it can't make out" $ \pr -> do
     cli pr [] `shouldThrow` usage
+    comments pr `shouldReturn` []
+
+  it "fails on a flag it doesn't know" $ \pr -> do
+    cli pr ["--hide-unchanged-commits", number] `shouldThrow` usage
     comments pr `shouldReturn` []
