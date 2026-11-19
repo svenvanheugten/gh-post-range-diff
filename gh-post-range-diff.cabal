@@ -94,6 +94,7 @@ library
     hs-source-dirs:   src
     exposed-modules:
         GhPostRangeDiff.Bases
+        GhPostRangeDiff.Cli
         GhPostRangeDiff.Git
         GhPostRangeDiff.GitHub
         GhPostRangeDiff.Render
@@ -114,7 +115,6 @@ executable gh-post-range-diff
     build-depends:
         base    >=4.20 && <5,
         gh-post-range-diff,
-        gh-post-range-diff:rangediff,
 
 -- Runs against fakes of git and GitHub, so it needs nothing on PATH.
 test-suite spec
@@ -137,5 +137,29 @@ test-suite spec
         cryptohash-sha1   >=0.11 && <0.12,
         hspec             >=2.10 && <3,
         QuickCheck        >=2.14 && <3,
+        gh-post-range-diff,
+        gh-post-range-diff:rangediff,
+
+-- Runs the CLI in real repos, built with jujutsu, against a fake of GitHub, so
+-- it needs both `jj` and `git` on PATH at run time.
+test-suite integration
+    import:           defaults
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   integration test rangediff/integration
+    main-is:          Spec.hs
+    other-modules:
+        GhPostRangeDiff.CliSpec
+        GhPostRangeDiff.FakeGitHub
+        GhPostRangeDiff.PullRequest
+        RangeDiff.Test.Repo
+    build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
+    build-depends:
+        base       >=4.20 && <5,
+        directory  >=1.3  && <1.4,
+        extra      >=1.7  && <2,
+        filepath   >=1.4  && <1.6,
+        hspec      >=2.10 && <3,
+        process    >=1.6  && <1.7,
+        temporary  >=1.3  && <1.4,
         gh-post-range-diff,
         gh-post-range-diff:rangediff,
