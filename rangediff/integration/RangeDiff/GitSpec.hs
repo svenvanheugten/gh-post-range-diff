@@ -1,7 +1,7 @@
--- | The range-diff `git range-diff` takes. Besides the shared 'examples', it
--- has examples of its own: about how git pairs commits up, which it does by
--- how alike their patches are, and about reading the text git prints, which a
--- repo's config can change.
+-- | The range-diff `git range-diff` takes. Besides the shared 'examples', and
+-- the 'gitPairing' ones about how git pairs commits up, which it does by how
+-- alike their patches are, it has examples of its own about reading the text
+-- git prints.
 module RangeDiff.GitSpec (spec) where
 
 import RangeDiff (Shape (..))
@@ -13,24 +13,7 @@ import Test.Hspec
 spec :: Spec
 spec = describe "git" $ inRepos $ do
   examples way
-
-  it "reads a commit rewritten past recognition as one removed and one added" $ \repo -> do
-    (old, now, wOld, w') <- rewrittenPastRecognition repo
-    rangeDiff (wayHandle way) repo old now
-      `shouldRead` [removed wOld "Add the widget", added w' "Add the widget"]
-
-  it "reads ranges of ten commits, which git pads, with an interdiff in the middle" $ \repo -> do
-    root <- initial repo
-    cs <- stack repo root (map numbered [1 .. 10])
-    old <- version repo root (last cs)
-    let four = cs !! 3
-    amend repo four [("f4.txt", numberedContents 4 ++ "changed\n")]
-    now <- version repo root (last cs)
-    cs' <- shas repo cs
-    let fourChanged = ["@@ f4.txt (new)", " +file 4, line 3", " +file 4, line 4", " +file 4, line 5", "++changed"]
-        readAs 4 s = updated way fourChanged s "Number 4"
-        readAs n s = unchanged s ("Number " ++ show n)
-    rangeDiff (wayHandle way) repo old now `shouldRead` zipWith readAs [1 :: Int ..] cs'
+  gitPairing way
 
   it "reads removed and added commits in ranges of ten, a run of added ones among them" $ \repo -> do
     root <- initial repo

@@ -35,11 +35,12 @@ runs:
 
     # With `jj` there, the report is worked out by the change ids jj writes on
     # its commits rather than by guessing which commit of the old branch is
-    # which commit of the new one; see "Sharper reports" in the README. Nothing
-    # has to be set up in the checkout for it: the tool makes the checkout
-    # into a jj repository itself. Where a branch carries no change ids,
-    # `git range-diff` is used.
-    - name: Install jj, for a sharper report where the branch was made with it
+    # which commit of the new one; see "Sharper reports" in the README. Where a
+    # branch carries no change ids, `git range-diff` does the guessing, but
+    # each rewrite is still shown with `jj interdiff`, which leaves out what
+    # only moved because the base branch did. Nothing has to be set up in the
+    # checkout for it: the tool makes the checkout into a jj repository itself.
+    - name: Install jj, for a sharper report
       shell: bash
       env:
         JJ_VERSION: v0.45.1

@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Add an option to leave unchanged commits out of the report, and only say how many there were, as described in the [README](https://github.com/svenvanheugten/gh-post-range-diff#readme) (https://github.com/svenvanheugten/gh-post-range-diff/issues/86)
 
+### Changed
+
+- Show each rewritten commit with `jj interdiff` wherever `jj` is installed, also for commits that weren't created with `jj`, since the interdiffs returned by `jj interdiff` are much easier to read. `git range-diff` still pairs those commits up. The GitHub Action installs `jj`, so it now does this by default. (https://github.com/svenvanheugten/gh-post-range-diff/pull/94)
+
 ### Fixed
 
 - Fix merge commits being left out of a range-diff taken with `git`. A merge's interdiff is the change to how its conflicts were resolved. (https://github.com/svenvanheugten/gh-post-range-diff/pull/92)

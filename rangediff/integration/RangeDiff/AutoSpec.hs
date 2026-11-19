@@ -1,10 +1,11 @@
 -- | Picking the way to take a range-diff: jj where the commits carry the change
--- ids it lines the two ranges up by, and git where they don't.
+-- ids it lines the two ranges up by, and git's pairing with jj's interdiffs where
+-- they don't, and git alone where there is no jj.
 --
 -- Which one was picked is not something 'RangeDiff.Auto.auto' says, so it is
--- read off the answer. Every case here rewrites a commit, and the two write an
--- interdiff nothing like one another, so the answer says outright which way
--- took it.
+-- read off the answer. Every case here rewrites a commit, and git and jj write
+-- an interdiff nothing like one another, so the answer says outright which
+-- wrote it.
 --
 -- The tool runs in a CI checkout, so that is where every case is taken but
 -- one: see 'inCheckout'. The one is a repo somebody keeps with jj themselves.
@@ -28,11 +29,15 @@ spec = describe "auto" $ inRepos $ do
     (old, now) <- rewritten repo
     inCheckout pickedJj (repoDir repo) old now
 
-  it "falls back on git where a commit carries none" $ \_ ->
-    withPlainRepo (inCheckout pickedGit)
+  it "pairs commits with git, and diffs them with jj, where a commit carries none" $ \_ ->
+    withPlainRepo (inCheckout pickedPairedByGit)
 
-  it "falls back on git where only some of the commits carry one" $ \_ ->
-    withMixedRepo (inCheckout pickedGit)
+  it "pairs commits with git, and diffs them with jj, where only some of the commits carry one" $ \_ ->
+    withMixedRepo (inCheckout pickedPairedByGit)
+
+  it "falls back on git alone where there is no jj" $ \repo -> do
+    (old, now) <- rewritten repo
+    inCheckout pickedGitAlone (repoDir repo) old now
 
   -- Where the branch was built: jj holds every commit already, and is asked
   -- about the repo as it is.
@@ -73,13 +78,20 @@ picked way other dir (oldBase, oldHead) (newBase, newHead) = do
 pickedJj :: FilePath -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> Expectation
 pickedJj = picked RangeDiff.Jj.jj RangeDiff.Git.git
 
--- | Expect 'auto' to take the range-diff with git. jj could be asked about a
--- commit that carries no change id as readily as about any other, and would
--- answer -- under a change id it makes up for it, which names a rewritten
--- commit and the commit it was rewritten from as two unrelated commits. So the
--- answer, not a failure, is what says the fallback was taken.
-pickedGit :: FilePath -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> Expectation
-pickedGit = picked RangeDiff.Git.git RangeDiff.Jj.jj
+-- | Expect 'auto' to pair the commits up with git, and to diff each pair with
+-- jj.
+pickedPairedByGit :: FilePath -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> Expectation
+pickedPairedByGit = picked RangeDiff.Jj.pairedByGit RangeDiff.Git.git
+
+-- | Expect 'auto', with no jj to be found, to take the range-diff with git
+-- alone.
+pickedGitAlone :: FilePath -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> Expectation
+pickedGitAlone dir (oldBase, oldHead) (newBase, newHead) = do
+  commits <- withoutJj (takeWith auto)
+  wanted <- takeWith RangeDiff.Git.git
+  commits `shouldBe` wanted
+  where
+    takeWith handle = RangeDiff.rangeDiff (handle dir) oldBase oldHead newBase newHead
 
 -- | A branch of one commit, reworded and amended: the two versions of it.
 rewritten :: Repo -> IO ((CommitSha, CommitSha), (CommitSha, CommitSha))

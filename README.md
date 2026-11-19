@@ -51,11 +51,11 @@ It can always work that out in these two cases, which should cover _most_ common
 
 Both cases are covered by tens of thousands of [property-based tests](https://en.wikipedia.org/wiki/Software_testing#Property_testing). Anything outside them isn't supported. In particular, once the base branch has been force-pushed at any point while your PR is open, every push to your branch has to be on the latest version of the base branch, or the report will include commits from the base branch.
 
-## Sharper reports for [jj](https://jj-vcs.github.io/jj/) repositories
+## Sharper reports with [jj](https://jj-vcs.github.io/jj/)
 
-`git range-diff` has to _guess_ which commit of the old version of your branch is which commit of the new one, by comparing how alike their diffs are, and it can guess wrong, for example by reporting a rewritten commit as combination of a dropped and an added commit, or by simply matching up commits that are completely unrelated.
+If `jj` is on the `PATH`, the commits are still paired up by `git range-diff`, but each pair is then diffed with `jj interdiff`, also for commits that weren't created with `jj`. `git range-diff`'s own interdiff diffs the formatted patches of the old and the new version of a commit, so if the base branch changed the lines around one of your hunks, that hunk's context changes too, and a commit you only rebased shows up as updated. `jj interdiff` diffs the commits themselves, so only what you changed shows up.
 
-Commits made with [jj](https://jj-vcs.github.io/jj/), however, carry a change ID that survives every rewrite, which means that the tool doesn't have to guess. If every commit in _both_ versions of the branch was made with `jj`, and `jj` is on the `PATH`, the report will automatically be worked out with `jj interdiff` instead. Commits are matched by change ID, and each rewrite is shown as a diff of the commits themselves, rather than of their formatted patches.
+If every commit in _both_ versions of the branch was made with `jj`, the commits are _paired up_ by `jj` too. Commits made with `jj` carry a change ID that survives every rewrite, so the tool doesn't have to guess which commit of the old version of your branch is which commit of the new one, the way `git range-diff` does by comparing how alike their diffs are. `git range-diff` can guess wrong, for example by reporting a rewritten commit as combination of a dropped and an added commit, or by simply matching up commits that are completely unrelated.
 
 ## GitHub Actions
 

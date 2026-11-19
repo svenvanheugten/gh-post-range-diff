@@ -11,8 +11,13 @@
 -- What is left is to have a repo jj can be asked about, to walk the two ranges
 -- together, and to ask `jj interdiff` what a rewrite did to each commit both
 -- of them hold.
+--
+-- Where the commits carry no change ids, `jj interdiff` is still the better
+-- way to say what a rewrite did -- it only needs telling which two commits to
+-- ask about, which `git range-diff` can guess. See 'pairedByGit'.
 module RangeDiff.Jj
   ( jj,
+    pairedByGit,
     colocated,
   )
 where
@@ -55,6 +60,25 @@ jjRangeDiff dir oldBase oldHead newBase newHead = do
   was <- commitsIn dir oldBase oldHead
   now <- commitsIn dir newBase newHead
   mapM (report dir) (lineUp was now)
+
+-- | Range-diffs taken in the repo in @dir@ with the commits paired up by
+-- `git range-diff`, and what a rewrite did to each pair said by jj.
+--
+-- This is for a repo whose commits carry no change ids, where which commit is
+-- which can only be guessed at. The guess is git's, but git's interdiff is a
+-- diff of the two patches as they were printed, so it takes in whatever moved
+-- under them: a base that changed the lines around a hunk changes the hunk's
+-- context, and a commit only rebased reads as one rewritten. `jj interdiff`
+-- rebases the old commit onto the new one's parents before it diffs them, so
+-- only what the rewrite itself did is left.
+pairedByGit :: FilePath -> Handle
+pairedByGit dir = Handle {rangeDiff = pairedRangeDiff}
+  where
+    pairedRangeDiff oldBase oldHead newBase newHead = do
+      ensureJjHolds dir [oldBase, oldHead, newBase, newHead]
+      mapM reportPaired =<< Git.paired dir oldBase oldHead newBase newHead
+    reportPaired (Git.Paired Nothing c) = pure c
+    reportPaired (Git.Paired (Just was) c) = (\change -> c {cmChange = change}) <$> rewrite dir was (cmCommitSha c)
 
 -- * Lining the two ranges up
 
@@ -99,12 +123,15 @@ lineUp was now = go was now []
 report :: FilePath -> Fate -> IO Commit
 report _ (Dropped o) = pure (Commit Removed (enCommitSha o) (enCommitMessage o))
 report _ (PutIn n) = pure (Commit Added (enCommitSha n) (enCommitMessage n))
-report dir (Kept o n) = (\c -> Commit c (enCommitSha n) (enCommitMessage n)) <$> change
+report dir (Kept o n) = (\c -> Commit c (enCommitSha n) (enCommitMessage n)) <$> rewrite dir (enCommitSha o) (enCommitSha n)
+
+-- | What a rewrite from the commit @was@ to the commit @now@ did to it.
+rewrite :: FilePath -> CommitSha -> CommitSha -> IO Change
+rewrite dir was now
+  -- The same commit is the same patch, so there is nothing to ask jj.
+  | was == now = pure Unchanged
+  | otherwise = classify <$> interdiffOf dir was now
   where
-    change
-      -- The same commit is the same patch, so there is nothing to ask jj.
-      | enCommitSha o == enCommitSha n = pure Unchanged
-      | otherwise = classify <$> interdiffOf dir (enCommitSha o) (enCommitSha n)
     -- A rewrite that left the commit's own diff alone -- a rebase, or the
     -- rebase a rewrite below it set off -- has nothing to show.
     classify "" = Unchanged
