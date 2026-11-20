@@ -38,8 +38,8 @@
           pkgs.jujutsu
         ];
 
-        # The test suite builds real repos: it rewrites them with jujutsu and
-        # reads them back with git.
+        # rangediff-integration builds real repos: it rewrites them with
+        # jujutsu and reads them back with git.
         testDeps = [
           pkgs.git
           pkgs.jujutsu
