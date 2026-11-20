@@ -50,8 +50,7 @@ library rangediff
         extra     >=1.7  && <2,
         process   >=1.6  && <1.7,
 
--- Builds real repos, rewriting them with jujutsu and reading them with git, so
--- it needs both `jj` and `git` on PATH at run time.
+-- Reads range-diffs from their text alone, so it needs nothing on PATH.
 test-suite rangediff-spec
     import:           defaults
     type:             exitcode-stdio-1.0
@@ -59,6 +58,20 @@ test-suite rangediff-spec
     main-is:          Spec.hs
     other-modules:
         RangeDiffSpec
+    build-tool-depends: hspec-discover:hspec-discover >=2.10 && <3
+    build-depends:
+        base       >=4.20 && <5,
+        hspec      >=2.10 && <3,
+        gh-post-range-diff:rangediff,
+
+-- Builds real repos, rewriting them with jujutsu and reading them with git, so
+-- it needs both `jj` and `git` on PATH at run time.
+test-suite rangediff-integration
+    import:           defaults
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   rangediff/integration
+    main-is:          Spec.hs
+    other-modules:
         RangeDiff.AutoSpec
         RangeDiff.GitSpec
         RangeDiff.JjSpec
