@@ -17,6 +17,7 @@ module RangeDiff.Test.Repo
     Patch (..),
     initial,
     new,
+    merge,
     stack,
     insertAfter,
     reword,
@@ -147,6 +148,15 @@ initial repo@(Repo dir) = do
 new :: Repo -> ChangeId -> Patch -> IO ChangeId
 new repo@(Repo dir) (ChangeId parent) p = do
   _ <- jjIn dir ["new", parent, messageOption (ptMessage p)]
+  write repo (ptFiles p)
+  current repo
+
+-- | A merge commit of @p@ on top of @parents@, in that order. The files @p@
+-- writes go over what the parents merge to, which is how it resolves a
+-- conflict between them.
+merge :: Repo -> [ChangeId] -> Patch -> IO ChangeId
+merge repo@(Repo dir) parents p = do
+  _ <- jjIn dir (["new"] ++ [c | ChangeId c <- parents] ++ [messageOption (ptMessage p)])
   write repo (ptFiles p)
   current repo
 

@@ -35,6 +35,39 @@ spec = describe "jj" $ inRepos $ do
                        "Add the widget"
                    ]
 
+  it "reads a merge whose conflict was resolved anew with the change to its resolution" $ \repo -> do
+    (base, w, r, m) <- mergedWithConflict repo
+    old <- version repo base m
+    amend repo m [("retries.txt", retriesContents "4")]
+    now <- version repo base m
+    [w', r', m'] <- shas repo [w, r, m]
+    rangeDiff (wayHandle way) repo old now
+      `shouldRead` [ unchanged w' "Add the widget",
+                     unchanged r' "Retry 2 times",
+                     updated
+                       way
+                       [ "diff --git a/retries.txt b/retries.txt",
+                         "--- a/retries.txt",
+                         "+++ b/retries.txt",
+                         "@@ -1,3 +1,3 @@",
+                         " # How often to retry a widget.",
+                         " ",
+                         "-RETRIES = 3",
+                         "+RETRIES = 4"
+                       ]
+                       m'
+                       "Merge the base"
+                   ]
+
+  it "reads a merge that resolved a conflict as unchanged when a commit below it was amended" $ \repo -> do
+    (base, w, r, m) <- mergedWithConflict repo
+    old <- version repo base m
+    amend repo w [("widget.py", widget "5")]
+    now <- version repo base m
+    [w', r', m'] <- shas repo [w, r, m]
+    rangeDiff (wayHandle way) repo old now
+      `shouldRead` [updated way (wayAmended way) w' "Add the widget", unchanged r' "Retry 2 times", unchanged m' "Merge the base"]
+
 -- | `jj interdiff`, which diffs the two commits themselves, in git's format: a
 -- section per file the rewrite touched, with the commit's description counted
 -- among them under a name no file could have.
@@ -68,7 +101,8 @@ way =
             " ",
             "-After 30s.",
             "+After 5s."
-          ]
+          ],
+      wayLeavesOutMerges = False
     }
   where
     -- jj names the description bare, without the a/ and b/ it puts on a file.

@@ -92,6 +92,24 @@ spec = describe "git" $ inRepos $ do
     rangeDiff (wayHandle way) repo old now
       `shouldRead` [updated way (wayReworded way) w' "Add a widget"]
 
+  it "leaves out a merge whose conflict was resolved anew" $ \repo -> do
+    (base, w, r, m) <- mergedWithConflict repo
+    old <- version repo base m
+    amend repo m [("retries.txt", retriesContents "4")]
+    now <- version repo base m
+    [w', r'] <- shas repo [w, r]
+    rangeDiff (wayHandle way) repo old now
+      `shouldRead` [unchanged w' "Add the widget", unchanged r' "Retry 2 times"]
+
+  it "leaves out a merge that resolved a conflict when a commit below it was amended" $ \repo -> do
+    (base, w, r, m) <- mergedWithConflict repo
+    old <- version repo base m
+    amend repo w [("widget.py", widget "5")]
+    now <- version repo base m
+    [w', r'] <- shas repo [w, r]
+    rangeDiff (wayHandle way) repo old now
+      `shouldRead` [updated way (wayAmended way) w' "Add the widget", unchanged r' "Retry 2 times"]
+
 -- | `git range-diff`, which diffs the two commits' printed patches: a reword
 -- is a hunk over the metadata git prints above a patch, and an amend a hunk
 -- over the patch, each line of it still carrying the patch's own +/-.
@@ -129,5 +147,6 @@ way =
           " ",
           "  ## widget.py (new) ##",
           " @@"
-        ]
+        ],
+      wayLeavesOutMerges = True
     }
