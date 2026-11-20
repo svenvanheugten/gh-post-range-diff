@@ -16,6 +16,8 @@ module RangeDiff.Test.Examples
     -- * The commits the examples are built from
     version,
     rewrittenPastRecognition,
+    mergedWithConflict,
+    retriesContents,
     addWidget,
     widget,
     numbered,
@@ -162,6 +164,68 @@ examples way = do
     [w'] <- shas repo [w]
     rangeDiff (wayHandle way) repo old now `shouldRead` [updated way (wayAmended way) w' subject]
 
+  it "reads a clean merge of the base as unchanged when a commit below it was amended" $ \repo -> do
+    root <- initial repo
+    base <- new repo root addBenchmark
+    [w] <- stack repo root [addWidget "30"]
+    m <- merge repo [w, base] (Patch "Merge the base" [])
+    old <- version repo base m
+    amend repo w [("widget.py", widget "5")]
+    now <- version repo base m
+    [w', m'] <- shas repo [w, m]
+    rangeDiff (wayHandle way) repo old now
+      `shouldRead` [updated way (wayAmended way) w' "Add the widget", unchanged m' "Merge the base"]
+
+  it "reads a clean merge with an edit of its own as unchanged when a commit below it was amended" $ \repo -> do
+    root <- initial repo
+    base <- new repo root addBenchmark
+    [w] <- stack repo root [addWidget "30"]
+    let benchmarked = unlines ["from widget import Widget", "", "for i in range(1000):", "    Widget(str(i)).timer.stop()"]
+    m <- merge repo [w, base] (Patch "Merge the base" [("bench.py", benchmarked)])
+    old <- version repo base m
+    amend repo w [("widget.py", widget "5")]
+    now <- version repo base m
+    [w', m'] <- shas repo [w, m]
+    rangeDiff (wayHandle way) repo old now
+      `shouldRead` [updated way (wayAmended way) w' "Add the widget", unchanged m' "Merge the base"]
+
+  it "reads a merge of the base as unchanged when a commit is added above it" $ \repo -> do
+    root <- initial repo
+    base <- new repo root addBenchmark
+    [w] <- stack repo root [addWidget "30"]
+    m <- merge repo [w, base] (Patch "Merge the base" [])
+    old <- version repo base m
+    t <- new repo m addTest
+    now <- version repo base t
+    [w', m', t'] <- shas repo [w, m, t]
+    rangeDiff (wayHandle way) repo old now
+      `shouldRead` [unchanged w' "Add the widget", unchanged m' "Merge the base", added t' "Test the widget"]
+
+  it "reads a merge that resolved a conflict as unchanged when a commit is added above it" $ \repo -> do
+    (base, w, r, m) <- mergedWithConflict repo
+    old <- version repo base m
+    t <- new repo m addTest
+    now <- version repo base t
+    [w', r', m', t'] <- shas repo [w, r, m, t]
+    rangeDiff (wayHandle way) repo old now
+      `shouldRead` [ unchanged w' "Add the widget",
+                     unchanged r' "Retry 2 times",
+                     unchanged m' "Merge the base",
+                     added t' "Test the widget"
+                   ]
+
+  it "reads a merge of a side branch as unchanged when a commit on one side was amended" $ \repo -> do
+    root <- initial repo
+    [w] <- stack repo root [addWidget "30"]
+    [t] <- stack repo root [addTest]
+    m <- merge repo [w, t] (Patch "Merge the tests" [])
+    old <- version repo root m
+    amend repo w [("widget.py", widget "5")]
+    now <- version repo root m
+    [w', t', m'] <- shas repo [w, t, m]
+    rangeDiff (wayHandle way) repo old now
+      `shouldRead` [unchanged t' "Test the widget", updated way (wayAmended way) w' "Add the widget", unchanged m' "Merge the tests"]
+
 -- * The commits the examples are built from
 
 -- | A version of the branch, as a range-diff is taken over it: where it forks
@@ -184,6 +248,23 @@ rewrittenPastRecognition repo = do
   now <- version repo root w
   [w'] <- shas repo [w]
   pure (old, now, wOld, w')
+
+-- | A branch that merged in a base it conflicts with, the merge taking the
+-- base's number of retries: the base, the widget commit, the commit setting
+-- the retries, and the merge.
+mergedWithConflict :: Repo -> IO (ChangeId, ChangeId, ChangeId, ChangeId)
+mergedWithConflict repo = do
+  root <- initial repo
+  base <- new repo root (retries "3")
+  [w, r] <- stack repo root [addWidget "30", retries "2"]
+  m <- merge repo [r, base] (Patch "Merge the base" [("retries.txt", retriesContents "3")])
+  pure (base, w, r, m)
+
+retries :: String -> Patch
+retries n = Patch ("Retry " ++ n ++ " times") [("retries.txt", retriesContents n)]
+
+retriesContents :: String -> String
+retriesContents n = unlines ["# How often to retry a widget.", "", "RETRIES = " ++ n]
 
 addWidget :: String -> Patch
 addWidget timeout = Patch "Add the widget" [("widget.py", widget timeout)]
@@ -263,4 +344,4 @@ shouldRead (RangeDiffOf way repo old@(oldBase, oldHead) now@(newBase, newHead)) 
 
 -- | What `git range-diff` prints for two ranges, as a person would read it.
 rangeDiffText :: Repo -> String -> String -> IO String
-rangeDiffText repo before after = readProcess "git" ["-C", repoDir repo, "range-diff", "--no-color", before, after] ""
+rangeDiffText repo before after = readProcess "git" ["-C", repoDir repo, "range-diff", "--no-color", "--remerge-diff", before, after] ""
