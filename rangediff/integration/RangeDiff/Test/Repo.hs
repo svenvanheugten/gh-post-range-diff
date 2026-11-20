@@ -27,6 +27,7 @@ module RangeDiff.Test.Repo
     moveBefore,
     sha,
     shas,
+    withoutJj,
   )
 where
 
@@ -35,7 +36,7 @@ import Control.Monad (foldM, void)
 import Data.List.Extra (trim)
 import Data.Maybe (fromMaybe)
 import RangeDiff.CommitSha (CommitSha, knownSha)
-import System.Directory (createDirectory, createDirectoryIfMissing)
+import System.Directory (createDirectory, createDirectoryIfMissing, createFileLink, findExecutable)
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.Exit (ExitCode (..))
 import System.FilePath (takeDirectory, (</>))
@@ -90,13 +91,7 @@ isolated act = withSystemTempDirectory "gh-post-range-diff" $ \tmp -> do
           ("JJ_USER", Nothing),
           ("JJ_EMAIL", Nothing)
         ]
-  bracket (swap environment) swap (const act)
-  where
-    -- Set each variable, handing back what it was set to before.
-    swap = mapM $ \(k, v) -> do
-      was <- lookupEnv k
-      maybe (unsetEnv k) (setEnv k) v
-      pure (k, was)
+  withEnvironment environment act
 
 gitConfig :: String
 gitConfig = unlines ["[core]", "\tabbrev = no"]
@@ -243,3 +238,23 @@ jj args = do
   case code of
     ExitSuccess -> pure out
     ExitFailure _ -> fail ("jj " ++ unwords args ++ " failed:\n" ++ err)
+
+-- | Run @act@ with a PATH that leads to git and to nothing else, so that there
+-- is no jj to be found. It is put back the way it was afterwards.
+withoutJj :: IO a -> IO a
+withoutJj act =
+  withSystemTempDirectory "gh-post-range-diff" $ \bin -> do
+    git <- maybe (fail "no git on PATH") pure =<< findExecutable "git"
+    createFileLink git (bin </> "git")
+    withEnvironment [("PATH", Just bin)] act
+
+-- | Run @act@ with each variable set, or unset where it is given nothing, and
+-- put back the way it was afterwards.
+withEnvironment :: [(String, Maybe String)] -> IO a -> IO a
+withEnvironment environment act = bracket (swap environment) swap (const act)
+  where
+    -- Set each variable, handing back what it was set to before.
+    swap = mapM $ \(k, v) -> do
+      was <- lookupEnv k
+      maybe (unsetEnv k) (setEnv k) v
+      pure (k, was)
