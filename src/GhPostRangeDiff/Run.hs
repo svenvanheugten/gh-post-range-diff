@@ -6,7 +6,7 @@ import GhPostRangeDiff.Bases (Bases (..), bases)
 import GhPostRangeDiff.Git (abbrev)
 import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.GitHub qualified as GitHub
-import GhPostRangeDiff.Render (format)
+import GhPostRangeDiff.Render (UnchangedVisibility, format)
 import RangeDiff qualified
 import RangeDiff.CommitSha (CommitSha, shaText)
 
@@ -23,24 +23,25 @@ data Reported = Posted | AlreadyReported
 
 -- Report on the push oldHead..newHead: post what there is to say about it as a
 -- PR comment, under the marker of that push, unless the marker says we already
--- have.
-run :: Git.Handle -> RangeDiff.Handle -> GitHub.Handle -> CommitSha -> CommitSha -> IO Reported
-run repo rd pr oldHead newHead = do
+-- have. The commits the push left unchanged are shown or left out as
+-- @visibility@ says.
+run :: Git.Handle -> RangeDiff.Handle -> GitHub.Handle -> UnchangedVisibility -> CommitSha -> CommitSha -> IO Reported
+run repo rd pr visibility oldHead newHead = do
   posted <- GitHub.comments pr
   if marker oldHead newHead `isInfixOf` posted
     then pure AlreadyReported
     else do
-      body <- comment repo rd pr oldHead newHead
+      body <- comment repo rd pr visibility oldHead newHead
       GitHub.postComment pr (marker oldHead newHead ++ "\n" ++ body)
       pure Posted
 
 -- | Report on the push oldHead..newHead: a header naming both ends of it, and
 -- the range-diff between the version of the branch it replaced and the one it
 -- left behind.
-comment :: Git.Handle -> RangeDiff.Handle -> GitHub.Handle -> CommitSha -> CommitSha -> IO String
-comment repo rd pr oldHead newHead = do
+comment :: Git.Handle -> RangeDiff.Handle -> GitHub.Handle -> UnchangedVisibility -> CommitSha -> CommitSha -> IO String
+comment repo rd pr visibility oldHead newHead = do
   Bases b1 b2 <- bases repo pr oldHead newHead
   commits <- RangeDiff.rangeDiff rd b1 oldHead b2 newHead
 
   let header = "### Range-diff for push " ++ abbrev oldHead ++ " → " ++ abbrev newHead
-  pure (header ++ "\n\n" ++ format commits)
+  pure (header ++ "\n\n" ++ format visibility commits)

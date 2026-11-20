@@ -79,6 +79,20 @@ jobs:
       - uses: svenvanheugten/gh-post-range-diff@v0.7.0
 ```
 
+On a large Pull Request, most commits in the report tend to be unchanged. To leave those out, and _only_ say how many there were, set `hide-unchanged` to `true`:
+
+```yaml
+      - uses: svenvanheugten/gh-post-range-diff@v0.7.0
+        with:
+          hide-unchanged: true
+```
+
+The report then comes out like this:
+
+> 🟢 **Added** `806d19e` Test the widget
+>
+> ⚪ **4 unchanged commits not shown**
+
 ## Manual use
 
 To report on the most recent force-push to a Pull Request yourself, use it as a [`gh` CLI extension](https://docs.github.com/en/github-cli/github-cli/using-github-cli-extensions):
@@ -104,3 +118,5 @@ programs.gh.extensions = [ inputs.gh-post-range-diff.packages.${pkgs.system}.def
 ```
 
 Then run `gh post-range-diff <pr number>`.
+
+Pass `--hide-unchanged` to leave the unchanged commits out of the report.

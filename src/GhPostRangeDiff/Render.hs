@@ -3,9 +3,9 @@
 -- Each commit becomes a list item with a status emoji, an auto-linked commit
 -- sha, and a subject. A changed commit's item is a collapsed spoiler, titled by
 -- that same line, holding its interdiff as a fenced diff block.
-module GhPostRangeDiff.Render (format) where
+module GhPostRangeDiff.Render (UnchangedVisibility (..), format) where
 
-import Data.List (group, intercalate)
+import Data.List (group, intercalate, partition)
 import GhPostRangeDiff.Wrap (wrap)
 import RangeDiff (Change (..), Commit (..), Interdiff, interdiffLines, interdiffText, messageText)
 import RangeDiff.CommitSha (shaText)
@@ -76,6 +76,26 @@ fenced patch = fence ++ "diff\n" ++ wrapped ++ fence
     wrapped = unlines (concatMap (uncurry (wrap wrapWidth)) (interdiffLines patch))
     fence = replicate (max 3 (maxBacktickRun wrapped + 1)) '`'
 
--- | Render the commits as a Markdown list, one item per commit.
-format :: [Commit] -> String
-format = intercalate "\n\n" . map render
+-- | Whether the commits a push left as they were are shown.
+data UnchangedVisibility
+  = -- | List each of them, like any other commit.
+    ShowUnchanged
+  | -- | Leave them out, and only say at the end how many there were.
+    HideUnchanged
+  deriving (Eq, Show)
+
+-- | Render the commits as a Markdown list, one item per commit, leaving the
+-- unchanged ones out if asked to.
+format :: UnchangedVisibility -> [Commit] -> String
+format ShowUnchanged commits = intercalate "\n\n" (map render commits)
+format HideUnchanged commits = intercalate "\n\n" (map render shown ++ [notShown (length hidden) | not (null hidden)])
+  where
+    (hidden, shown) = partition ((== Unchanged) . cmChange) commits
+
+-- | The line that stands in for the unchanged commits 'HideUnchanged' leaves
+-- out. It says how many there were, so that a reader can tell the list isn't
+-- the whole branch, and so that a push that only rebased the branch, changing
+-- none of its commits, still gets a report that says so.
+notShown :: Int -> String
+notShown 1 = "\9898 **1 unchanged commit not shown**" -- ⚪
+notShown n = "\9898 **" ++ show n ++ " unchanged commits not shown**"

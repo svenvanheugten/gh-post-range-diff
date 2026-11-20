@@ -7,6 +7,9 @@ inputs:
   github-token:
     description: Token used to read the PR timeline and post the comment. Needs pull-requests:write.
     default: ${{ github.token }}
+  hide-unchanged:
+    description: Leave the commits a push left unchanged out of the comment, and only say how many there were.
+    default: "false"
 runs:
   using: composite
   steps:
@@ -69,10 +72,18 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
+        HIDE_UNCHANGED: ${{ inputs.hide-unchanged }}
       run: |
+        flags=()
+        case "$HIDE_UNCHANGED" in
+          true) flags+=(--hide-unchanged) ;;
+          false) ;;
+          *) echo "hide-unchanged must be true or false, not '$HIDE_UNCHANGED'." >&2; exit 1 ;;
+        esac
+
         gh extension install "svenvanheugten/gh-post-range-diff" \
           --pin "$VERSION" --force
-        gh post-range-diff \
+        gh post-range-diff "${flags[@]}" \
           "${{ github.event.pull_request.number }}" \
           "${{ github.event.before }}" \
           "${{ github.event.after }}"

@@ -2,9 +2,10 @@
 
 module GhPostRangeDiff.RenderSpec (spec) where
 
-import Data.List (isInfixOf, isPrefixOf, stripPrefix)
+import Data.Char (isDigit)
+import Data.List (isInfixOf, isPrefixOf, partition, stripPrefix, unsnoc)
 import Data.Maybe (fromMaybe, mapMaybe)
-import GhPostRangeDiff.Render (format)
+import GhPostRangeDiff.Render (UnchangedVisibility (..), format)
 import RangeDiff (Change (..), Commit (..), CommitMessage, Interdiff (interdiffShape, interdiffText), Shape (..), commitMessage, interdiff, messageText)
 import RangeDiff.CommitSha (CommitSha, commitSha, shaText)
 import Test.Hspec
@@ -226,6 +227,23 @@ toCommits _ (CodeBlock info _ : _) = Left ("stray code block: " ++ show info)
 reparse :: Shape -> String -> Either String [Commit]
 reparse shape s = blocks (lines s) >>= toCommits shape
 
+-- | How many commits the line 'HideUnchanged' ends on says it left out, if the
+-- line is that one.
+notShown :: String -> Maybe Int
+notShown l = case span isDigit <$> stripPrefix "\9898 **" l of
+  Just ("1", " unchanged commit not shown**") -> Just 1
+  Just (n@(_ : _), " unchanged commits not shown**") | read n > (1 :: Int) -> Just (read n)
+  _ -> Nothing
+
+-- | Read the output of 'format' 'HideUnchanged' back into the commits it shows
+-- and how many unchanged ones it says it left out.
+reparseHidden :: Shape -> String -> Either String ([Commit], Int)
+reparseHidden shape s = do
+  bs <- blocks (lines s)
+  case unsnoc bs of
+    Just (listed, PlainLineOfText l) | Just n <- notShown l -> (,n) <$> toCommits shape listed
+    _ -> (,0) <$> toCommits shape bs
+
 -- | The lines inside the code blocks of a Markdown string. Fails if it can't
 -- be split into blocks.
 codeLines :: String -> [String]
@@ -247,13 +265,17 @@ widened _ = False
 
 -- | The lines of the diff block 'format' shows an interdiff in.
 shown :: Interdiff -> [String]
-shown patch = codeLines (format [Commit (Updated patch) sha (commitMessage "Add the widget")])
+shown patch = codeLines (format ShowUnchanged [Commit (Updated patch) sha (commitMessage "Add the widget")])
   where
     sha = fromMaybe (error "not a sha") (commitSha "1234567")
 
 -- | @n@ words, of four letters each.
 words' :: Int -> String
 words' n = unwords (replicate n "word")
+
+-- | An unchanged commit, of the given sha.
+unchangedCommit :: String -> Commit
+unchangedCommit sha = Commit Unchanged (fromMaybe (error "not a sha") (commitSha sha)) (commitMessage "Add the widget")
 
 spec :: Spec
 spec = describe "format" $ do
@@ -262,7 +284,19 @@ spec = describe "format" $ do
       forAllShrink arbitrary shrink $ \(Comment shape commits) ->
         cover 10 (any widened commits) "widened fence" $
           cover 10 (any wrapped commits) "wrapped line" $
-            reparse shape (format commits) === Right commits
+            reparse shape (format ShowUnchanged commits) === Right commits
+
+  it "renders all but the unchanged commits losslessly, and says how many it left out" $
+    checkCoverage $
+      forAllShrink arbitrary shrink $ \(Comment shape commits) ->
+        let (unchanged, others) = partition ((== Unchanged) . cmChange) commits
+         in cover 10 (length unchanged == 1) "one unchanged commit" $
+              cover 10 (length unchanged > 1) "several unchanged commits" $
+                reparseHidden shape (format HideUnchanged commits) === Right (others, length unchanged)
+
+  it "says how many commits it left out when it left all of them out" $
+    format HideUnchanged [unchangedCommit "1234567", unchangedCommit "89abcde"]
+      `shouldBe` "\9898 **2 unchanged commits not shown**"
 
   it "carries a wrapped line of a diff of patches on under both its markers" $
     shown (interdiff DiffOfPatches (unlines ["@@ widget.py (new)", "-+" ++ words' 30]))
@@ -281,4 +315,4 @@ spec = describe "format" $ do
     checkCoverage $
       forAllShrink (resize 8 (listOf arbitrary)) shrink $ \commits ->
         cover 10 (any wrapped commits) "wrapped line" $
-          all ((<= wrapWidth) . width) (codeLines (format commits))
+          all ((<= wrapWidth) . width) (codeLines (format ShowUnchanged commits))

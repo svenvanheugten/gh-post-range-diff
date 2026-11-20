@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Add an option to leave unchanged commits out of the report, and only say how many there were, as described in the [README](https://github.com/svenvanheugten/gh-post-range-diff#readme) (https://github.com/svenvanheugten/gh-post-range-diff/issues/86)
+
 ## [0.7.0] - 2026-11-08
 
 ### Added
