@@ -21,7 +21,7 @@ import GhPostRangeDiff.FakeGit (Change (..), ChangeNo (..))
 import GhPostRangeDiff.FakeGit qualified as FakeGit
 import GhPostRangeDiff.FakeGitHub qualified as FakeGitHub
 import GhPostRangeDiff.Git (abbrev)
-import GhPostRangeDiff.GitHub (Ev (..))
+import GhPostRangeDiff.GitHub (Ev (..), Ref (..))
 import RangeDiff.CommitSha (CommitSha)
 import Test.Hspec
 import Test.Hspec.QuickCheck (modifyMaxSuccess)
@@ -257,7 +257,9 @@ reported [] = property Discard
 reported (first : rest) = ioProperty $ do
   origin <- FakeGit.new
   FakeGit.store origin (concatMap commits (first : rest))
-  pr <- FakeGitHub.newPullRequest origin (baseTip first) (headTip first)
+  FakeGit.place origin (FakeGitHub.branch Base) (baseTip first)
+  FakeGit.place origin (FakeGitHub.branch Head) (headTip first)
+  pr <- FakeGitHub.newPullRequest (FakeGit.handle origin) (baseTip first) (headTip first)
   conjoin <$> traverse (push origin pr) (zip (first : rest) rest)
 
 -- | Push the version of the branch, then work out where it and the version it
@@ -265,6 +267,8 @@ reported (first : rest) = ioProperty $ do
 -- takes, it has to go and get.
 push :: FakeGit.Repo -> FakeGitHub.PullRequest -> (Version, Version) -> IO Property
 push origin pr (was, now) = do
+  FakeGit.place origin (FakeGitHub.branch Base) (baseTip now)
+  FakeGit.place origin (FakeGitHub.branch Head) (headTip now)
   pushed <- FakeGitHub.push pr (baseTip now) (headTip now)
   case pushed of
     -- The base branch moved and the feature branch came out where it already

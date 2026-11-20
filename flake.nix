@@ -38,8 +38,9 @@
           pkgs.jujutsu
         ];
 
-        # rangediff-integration builds real repos: it rewrites them with
-        # jujutsu and reads them back with git.
+        # The test suites build real repos: rangediff-integration rewrites them
+        # with jujutsu and reads them back with git, and integration runs the
+        # CLI in them.
         testDeps = [
           pkgs.git
           pkgs.jujutsu
@@ -98,7 +99,7 @@
 
           lint = pkgs.runCommand "hlint" { nativeBuildInputs = [ hsPkgs.hlint ]; } ''
             cd ${self}
-            hlint src app test rangediff
+            hlint src app test rangediff integration
             touch $out
           '';
 
