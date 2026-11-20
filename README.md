@@ -53,9 +53,9 @@ Both cases are covered by tens of thousands of [property-based tests](https://en
 
 ## Sharper reports with [jj](https://jj-vcs.github.io/jj/)
 
-If `jj` is on the `PATH`, the commits are still paired up by `git range-diff`, but each pair is then diffed with `jj interdiff`, also for commits that weren't created with `jj`. `git range-diff`'s own interdiff compares the formatted _patches_ of the old and the new version of a commit, which can be pretty hard to read, and might contain noisy context changes from the base branch. `jj interdiff` compares what the patches _result in_, rather than just comparing the patches themselves, which is most likely what you're actally interested in.
+If [`jj`](https://jj-vcs.github.io/jj/) is on the `PATH` (which is the case in the GitHub Action), the commits are still paired up by `git range-diff`, but each pair is then diffed with `jj interdiff`, also for commits that weren't created with `jj`. `git range-diff`'s own interdiff compares the formatted _patches_ of the old and the new version of a commit, which can be pretty hard to read, and might contain noisy context changes from the base branch. `jj interdiff` compares what the patches _result in_, rather than just comparing the patches themselves, which is most likely what you're actally interested in.
 
-If every commit in _both_ versions of the branch was made with `jj`, the commits are _paired up_ by `jj` too. Commits made with `jj` carry a change ID that survives every rewrite, so the tool doesn't have to guess which commit of the old version of your branch is which commit of the new one, the way `git range-diff` does by comparing how alike their diffs are.
+Furthermore, if every commit in _both_ versions of the branch turn out to be created with `jj`, the commits will be paired up by the tool itself by using the [JJ Change IDs](https://docs.jj-vcs.dev/latest/glossary/#change-id), and `git range-diff` will be skipped entirely. This leads to even better reports, as it no longer has to _guess_ which commits should be paired together, but instead has a stable identifier to go by.
 
 Pass `--no-jj` to take the range-diff with `git` alone, even where `jj` is on the `PATH`. In the GitHub Action, set `no-jj` to `true`, which also skips installing `jj`.
 
