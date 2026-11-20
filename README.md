@@ -53,9 +53,9 @@ Both cases are covered by tens of thousands of [property-based tests](https://en
 
 ## Sharper reports with [jj](https://jj-vcs.github.io/jj/)
 
-If `jj` is on the `PATH`, the commits are still paired up by `git range-diff`, but each pair is then diffed with `jj interdiff`, also for commits that weren't created with `jj`. `git range-diff`'s own interdiff diffs the formatted patches of the old and the new version of a commit, so if the base branch changed the lines around one of your hunks, that hunk's context changes too, and a commit you only rebased shows up as updated. `jj interdiff` diffs the commits themselves, so only what you changed shows up.
+If `jj` is on the `PATH`, the commits are still paired up by `git range-diff`, but each pair is then diffed with `jj interdiff`, also for commits that weren't created with `jj`. `git range-diff`'s own interdiff compares the formatted _patches_ of the old and the new version of a commit, which can be pretty hard to read, and might contain noisy context changes from the base branch. `jj interdiff` compares what the patches _result in_, rather than just comparing the patches themselves, which is most likely what you're actally interested in.
 
-If every commit in _both_ versions of the branch was made with `jj`, the commits are _paired up_ by `jj` too. Commits made with `jj` carry a change ID that survives every rewrite, so the tool doesn't have to guess which commit of the old version of your branch is which commit of the new one, the way `git range-diff` does by comparing how alike their diffs are. `git range-diff` can guess wrong, for example by reporting a rewritten commit as combination of a dropped and an added commit, or by simply matching up commits that are completely unrelated.
+If every commit in _both_ versions of the branch was made with `jj`, the commits are _paired up_ by `jj` too. Commits made with `jj` carry a change ID that survives every rewrite, so the tool doesn't have to guess which commit of the old version of your branch is which commit of the new one, the way `git range-diff` does by comparing how alike their diffs are.
 
 Pass `--no-jj` to take the range-diff with `git` alone, even where `jj` is on the `PATH`. In the GitHub Action, set `no-jj` to `true`, which also skips installing `jj`.
 
