@@ -10,6 +10,7 @@ import GhPostRangeDiff.Render (UnchangedVisibility (..), format)
 import RangeDiff qualified
 import RangeDiff.Auto (auto)
 import RangeDiff.CommitSha (CommitSha, shaText)
+import RangeDiff.Git qualified
 import RangeDiff.Test.Repo (ChangeId, Patch (..))
 import RangeDiff.Test.Repo qualified as Repo
 import Test.Hspec
@@ -39,11 +40,11 @@ take' n = "The widget, take " ++ show n ++ ".\n"
 
 -- | The comment on the push old..new: its marker, a header naming the push,
 -- and the range-diff of the two versions of the branch it is between, with the
--- unchanged commits shown or left out as @visibility@ says.
-report :: PullRequest -> UnchangedVisibility -> CommitSha -> CommitSha -> IO String
-report pr visibility old new = do
+-- unchanged commits shown or left out as @visibility@ says, taken with @rd@.
+report :: (FilePath -> RangeDiff.Handle) -> PullRequest -> UnchangedVisibility -> CommitSha -> CommitSha -> IO String
+report rd pr visibility old new = do
   b <- base pr
-  commits <- RangeDiff.rangeDiff (auto (checkout pr)) b old b new
+  commits <- RangeDiff.rangeDiff (rd (checkout pr)) b old b new
   pure $
     unlines
       [ "<!-- gh-post-range-diff " ++ shaText old ++ ".." ++ shaText new ++ " -->",
@@ -53,7 +54,7 @@ report pr visibility old new = do
       ++ format visibility commits
 
 usage :: Selector ErrorCall
-usage (ErrorCall m) = m == "usage: gh-post-range-diff [--hide-unchanged] <pr> [<before-sha> <after-sha>]"
+usage (ErrorCall m) = m == "usage: gh-post-range-diff [--hide-unchanged] [--no-jj] <pr> [<before-sha> <after-sha>]"
 
 spec :: Spec
 spec = inPullRequests $ do
@@ -63,14 +64,14 @@ spec = inPullRequests $ do
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
       cli pr [number, shaText w1, shaText w2] `shouldReturn` Nothing
-      expected <- report pr ShowUnchanged w1 w2
+      expected <- report auto pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
     it "posts the range-diff of a push that only added commits" $ \pr -> do
       (g, g1) <- gadget pr
       (_, w1) <- widget pr g
       cli pr [number, shaText g1, shaText w1] `shouldReturn` Nothing
-      expected <- report pr ShowUnchanged g1 w1
+      expected <- report auto pr ShowUnchanged g1 w1
       comments pr `shouldReturn` [expected]
 
     it "posts it only once, however often it is run" $ \pr -> do
@@ -80,7 +81,7 @@ spec = inPullRequests $ do
       let args = [number, shaText w1, shaText w2]
       cli pr args `shouldReturn` Nothing
       cli pr args `shouldReturn` Just ("Already reported on " ++ abbrev w1 ++ ".." ++ abbrev w2 ++ ". Nothing to do.")
-      expected <- report pr ShowUnchanged w1 w2
+      expected <- report auto pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
     it "leaves the unchanged commits out with --hide-unchanged" $ \pr -> do
@@ -88,7 +89,15 @@ spec = inPullRequests $ do
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
       cli pr ["--hide-unchanged", number, shaText w1, shaText w2] `shouldReturn` Nothing
-      expected <- report pr HideUnchanged w1 w2
+      expected <- report auto pr HideUnchanged w1 w2
+      comments pr `shouldReturn` [expected]
+
+    it "takes the range-diff with git alone with --no-jj" $ \pr -> do
+      (g, _) <- gadget pr
+      (w, w1) <- widget pr g
+      w2 <- rework pr w 2
+      cli pr ["--no-jj", number, shaText w1, shaText w2] `shouldReturn` Nothing
+      expected <- report RangeDiff.Git.git pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
   describe "given only the pull request" $ do
@@ -98,7 +107,7 @@ spec = inPullRequests $ do
       w2 <- rework pr w 2
       w3 <- rework pr w 3
       cli pr [number] `shouldReturn` Nothing
-      expected <- report pr ShowUnchanged w2 w3
+      expected <- report auto pr ShowUnchanged w2 w3
       comments pr `shouldReturn` [expected]
 
     it "says so where nothing was force-pushed" $ \pr -> do
@@ -113,7 +122,7 @@ spec = inPullRequests $ do
       w2 <- rework pr w 2
       w3 <- rework pr w 3
       cli pr [number, "--hide-unchanged"] `shouldReturn` Nothing
-      expected <- report pr HideUnchanged w2 w3
+      expected <- report auto pr HideUnchanged w2 w3
       comments pr `shouldReturn` [expected]
 
   it "fails on arguments it can't make out" $ \pr -> do

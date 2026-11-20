@@ -10,6 +10,9 @@ inputs:
   hide-unchanged:
     description: Leave the commits a push left unchanged out of the comment, and only say how many there were.
     default: "false"
+  no-jj:
+    description: Take the range-diff with git alone, without installing jj.
+    default: "false"
 runs:
   using: composite
   steps:
@@ -41,6 +44,7 @@ runs:
     # only moved because the base branch did. Nothing has to be set up in the
     # checkout for it: the tool makes the checkout into a jj repository itself.
     - name: Install jj, for a sharper report
+      if: inputs.no-jj != 'true'
       shell: bash
       env:
         JJ_VERSION: v0.45.1
@@ -84,12 +88,18 @@ runs:
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         HIDE_UNCHANGED: ${{ inputs.hide-unchanged }}
+        NO_JJ: ${{ inputs.no-jj }}
       run: |
         flags=()
         case "$HIDE_UNCHANGED" in
           true) flags+=(--hide-unchanged) ;;
           false) ;;
           *) echo "hide-unchanged must be true or false, not '$HIDE_UNCHANGED'." >&2; exit 1 ;;
+        esac
+        case "$NO_JJ" in
+          true) flags+=(--no-jj) ;;
+          false) ;;
+          *) echo "no-jj must be true or false, not '$NO_JJ'." >&2; exit 1 ;;
         esac
 
         gh post-range-diff "${flags[@]}" \
