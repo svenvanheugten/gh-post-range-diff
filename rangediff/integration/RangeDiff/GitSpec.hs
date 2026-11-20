@@ -92,23 +92,33 @@ spec = describe "git" $ inRepos $ do
     rangeDiff (wayHandle way) repo old now
       `shouldRead` [updated way (wayReworded way) w' "Add a widget"]
 
-  it "leaves out a merge whose conflict was resolved anew" $ \repo -> do
+  it "reads a merge whose conflict was resolved anew as one removed and one added" $ \repo -> do
     (base, w, r, m) <- mergedWithConflict repo
     old <- version repo base m
+    mOld <- sha repo m
     amend repo m [("retries.txt", retriesContents "4")]
     now <- version repo base m
-    [w', r'] <- shas repo [w, r]
+    [w', r', m'] <- shas repo [w, r, m]
     rangeDiff (wayHandle way) repo old now
-      `shouldRead` [unchanged w' "Add the widget", unchanged r' "Retry 2 times"]
+      `shouldRead` [ unchanged w' "Add the widget",
+                     unchanged r' "Retry 2 times",
+                     removed mOld "Merge the base",
+                     added m' "Merge the base"
+                   ]
 
-  it "leaves out a merge that resolved a conflict when a commit below it was amended" $ \repo -> do
+  it "reads a merge that resolved a conflict as one removed and one added when a commit below it was amended" $ \repo -> do
     (base, w, r, m) <- mergedWithConflict repo
     old <- version repo base m
+    mOld <- sha repo m
     amend repo w [("widget.py", widget "5")]
     now <- version repo base m
-    [w', r'] <- shas repo [w, r]
+    [w', r', m'] <- shas repo [w, r, m]
     rangeDiff (wayHandle way) repo old now
-      `shouldRead` [updated way (wayAmended way) w' "Add the widget", unchanged r' "Retry 2 times"]
+      `shouldRead` [ updated way (wayAmended way) w' "Add the widget",
+                     unchanged r' "Retry 2 times",
+                     removed mOld "Merge the base",
+                     added m' "Merge the base"
+                   ]
 
 -- | `git range-diff`, which diffs the two commits' printed patches: a reword
 -- is a hunk over the metadata git prints above a patch, and an amend a hunk
@@ -147,6 +157,5 @@ way =
           " ",
           "  ## widget.py (new) ##",
           " @@"
-        ],
-      wayLeavesOutMerges = True
+        ]
     }

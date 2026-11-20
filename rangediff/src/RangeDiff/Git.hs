@@ -117,11 +117,14 @@ git dir = Handle {rangeDiff = gitRangeDiff dir}
 -- outright, since a repo or user configured to have it always would otherwise
 -- wrap every header in escape codes. Context is asked for outright too, since
 -- one configured to have none would leave a reworded subject without the line
--- that says it is the subject; see 'rewordedTo'.
+-- that says it is the subject; see 'rewordedTo'. Merges are asked for too,
+-- which git leaves out otherwise: each as the diff of what it holds against
+-- what merging its parents would have left, which is how its conflicts were
+-- resolved.
 gitRangeDiff :: FilePath -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
 gitRangeDiff dir oldBase oldHead newBase newHead = parse <$> command dir args
   where
-    args = ["range-diff", "--no-color", "--unified=3", range oldBase oldHead, range newBase newHead]
+    args = ["range-diff", "--no-color", "--unified=3", "--remerge-diff", range oldBase oldHead, range newBase newHead]
     range a b = shaText a ++ ".." ++ shaText b
 
 -- | Run a git command in the repo in @dir@, handing back what it printed on

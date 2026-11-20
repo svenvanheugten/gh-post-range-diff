@@ -101,8 +101,7 @@ way =
             " ",
             "-After 30s.",
             "+After 5s."
-          ],
-      wayLeavesOutMerges = False
+          ]
     }
   where
     -- jj names the description bare, without the a/ and b/ it puts on a file.

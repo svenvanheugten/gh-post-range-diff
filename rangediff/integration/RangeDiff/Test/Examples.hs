@@ -28,7 +28,6 @@ module RangeDiff.Test.Examples
     added,
     removed,
     updated,
-    readMerges,
     RangeDiffOf,
     rangeDiff,
     shouldRead,
@@ -57,9 +56,7 @@ data Way = Way
     wayAmended :: [String],
     -- | the last line of the widget commit's message body changed from "After
     -- 30s." to "After 5s."
-    wayBodyReworded :: [String],
-    -- | whether it leaves merge commits out of a range-diff
-    wayLeavesOutMerges :: Bool
+    wayBodyReworded :: [String]
   }
 
 -- | What either way has to read the same, but for how it writes an interdiff.
@@ -177,7 +174,7 @@ examples way = do
     now <- version repo base m
     [w', m'] <- shas repo [w, m]
     rangeDiff (wayHandle way) repo old now
-      `shouldRead` (updated way (wayAmended way) w' "Add the widget" : readMerges way [unchanged m' "Merge the base"])
+      `shouldRead` [updated way (wayAmended way) w' "Add the widget", unchanged m' "Merge the base"]
 
   it "reads a clean merge with an edit of its own as unchanged when a commit below it was amended" $ \repo -> do
     root <- initial repo
@@ -190,7 +187,7 @@ examples way = do
     now <- version repo base m
     [w', m'] <- shas repo [w, m]
     rangeDiff (wayHandle way) repo old now
-      `shouldRead` (updated way (wayAmended way) w' "Add the widget" : readMerges way [unchanged m' "Merge the base"])
+      `shouldRead` [updated way (wayAmended way) w' "Add the widget", unchanged m' "Merge the base"]
 
   it "reads a merge of the base as unchanged when a commit is added above it" $ \repo -> do
     root <- initial repo
@@ -202,7 +199,7 @@ examples way = do
     now <- version repo base t
     [w', m', t'] <- shas repo [w, m, t]
     rangeDiff (wayHandle way) repo old now
-      `shouldRead` ([unchanged w' "Add the widget"] ++ readMerges way [unchanged m' "Merge the base"] ++ [added t' "Test the widget"])
+      `shouldRead` [unchanged w' "Add the widget", unchanged m' "Merge the base", added t' "Test the widget"]
 
   it "reads a merge that resolved a conflict as unchanged when a commit is added above it" $ \repo -> do
     (base, w, r, m) <- mergedWithConflict repo
@@ -211,10 +208,11 @@ examples way = do
     now <- version repo base t
     [w', r', m', t'] <- shas repo [w, r, m, t]
     rangeDiff (wayHandle way) repo old now
-      `shouldRead` ( [unchanged w' "Add the widget", unchanged r' "Retry 2 times"]
-                       ++ readMerges way [unchanged m' "Merge the base"]
-                       ++ [added t' "Test the widget"]
-                   )
+      `shouldRead` [ unchanged w' "Add the widget",
+                     unchanged r' "Retry 2 times",
+                     unchanged m' "Merge the base",
+                     added t' "Test the widget"
+                   ]
 
   it "reads a merge of a side branch as unchanged when a commit on one side was amended" $ \repo -> do
     root <- initial repo
@@ -226,7 +224,7 @@ examples way = do
     now <- version repo root m
     [w', t', m'] <- shas repo [w, t, m]
     rangeDiff (wayHandle way) repo old now
-      `shouldRead` ([unchanged t' "Test the widget", updated way (wayAmended way) w' "Add the widget"] ++ readMerges way [unchanged m' "Merge the tests"])
+      `shouldRead` [unchanged t' "Test the widget", updated way (wayAmended way) w' "Add the widget", unchanged m' "Merge the tests"]
 
 -- * The commits the examples are built from
 
@@ -313,10 +311,6 @@ removed = entry Removed
 updated :: Way -> [String] -> CommitSha -> String -> Commit
 updated way hunk = entry (Updated (interdiff (wayShape way) (unlines hunk)))
 
--- | @merges@, unless the way leaves merges out.
-readMerges :: Way -> [Commit] -> [Commit]
-readMerges way merges = if wayLeavesOutMerges way then [] else merges
-
 entry :: Change -> CommitSha -> String -> Commit
 entry change s message = Commit change s (commitMessage message)
 
@@ -350,4 +344,4 @@ shouldRead (RangeDiffOf way repo old@(oldBase, oldHead) now@(newBase, newHead)) 
 
 -- | What `git range-diff` prints for two ranges, as a person would read it.
 rangeDiffText :: Repo -> String -> String -> IO String
-rangeDiffText repo before after = readProcess "git" ["-C", repoDir repo, "range-diff", "--no-color", before, after] ""
+rangeDiffText repo before after = readProcess "git" ["-C", repoDir repo, "range-diff", "--no-color", "--remerge-diff", before, after] ""
