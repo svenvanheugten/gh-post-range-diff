@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-20
+
 ### Added
 
 - Add an option to leave unchanged commits out of the report, and only say how many there were. To use it, pass `--hide-unchanged` on the command line, or set `hide-unchanged` to `true` in the GitHub Action. (https://github.com/svenvanheugten/gh-post-range-diff/issues/86)

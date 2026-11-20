@@ -78,7 +78,7 @@ jobs:
   range-diff:
     runs-on: ubuntu-latest
     steps:
-      - uses: svenvanheugten/gh-post-range-diff@v0.7.0
+      - uses: svenvanheugten/gh-post-range-diff@v0.8.0
 ```
 
 This comments on every push, including ones that only add commits on top. To only comment on force-pushes, add `if: github.event.forced` to the job:
@@ -93,7 +93,7 @@ jobs:
 On a large Pull Request, most commits in the report tend to be unchanged. To leave those out, and _only_ say how many there were, set `hide-unchanged` to `true`:
 
 ```yaml
-      - uses: svenvanheugten/gh-post-range-diff@v0.7.0
+      - uses: svenvanheugten/gh-post-range-diff@v0.8.0
         with:
           hide-unchanged: true
 ```
