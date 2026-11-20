@@ -6,8 +6,13 @@
 -- is which commit of the new one is a guess, and the interdiff it prints is a
 -- diff of formatted patches rather than of the commits themselves.
 -- "RangeDiff.Jj" has neither problem.
+--
+-- The two problems come apart, though: 'paired' hands back which commits git
+-- lined up, so that what a rewrite did can be asked of something else.
 module RangeDiff.Git
   ( git,
+    Paired (..),
+    paired,
     command,
   )
 where
@@ -63,21 +68,23 @@ peel n s = case span (/= ' ') (dropWhile (== ' ') s) of
 -- commit message, taken verbatim -- except that git takes it from the old side
 -- of a pair, so a @!@ commit that was reworded is read under the message its
 -- interdiff says it was reworded to. See 'rewordedTo'.
-mkCommit :: String -> [String] -> Commit
-mkCommit l body = case peel 5 l of
+mkPaired :: String -> [String] -> Paired
+mkPaired l body = case peel 5 l of
   Just ([_, oldSha, [m], _, newSha], subj) -> case m of
-    '>' -> commit Added newSha subj
+    '>' -> alone Added newSha subj
     -- A removed commit only exists on the old side; everything else has a
     -- new-side sha we can link to.
-    '<' -> commit Removed oldSha subj
-    '=' -> commit Unchanged newSha subj
-    '!' -> commit (Updated (interdiff DiffOfPatches (unlines hunks))) newSha (fromMaybe subj (rewordedTo hunks))
+    '<' -> alone Removed oldSha subj
+    '=' -> alone Unchanged newSha subj
+    '!' -> Paired (Just (sha oldSha)) (commit (Updated (interdiff DiffOfPatches (unlines hunks))) newSha (fromMaybe subj (rewordedTo hunks)))
     _ -> bad
   _ -> bad
   where
     hunks = map (stripIndent 4) body
+    alone change s subj = Paired Nothing (commit change s subj)
     -- The side we didn't pick is `-------`, so only the one we keep is read.
-    commit change sha subj = Commit change (fromMaybe bad (commitSha sha)) (commitMessage subj)
+    commit change s subj = Commit change (sha s) (commitMessage subj)
+    sha = fromMaybe bad . commitSha
     bad = error ("unexpected range-diff header: " ++ l)
 
 -- | The subject a commit now goes under, if its interdiff shows it.
@@ -105,26 +112,38 @@ rewordedTo ("@@ Metadata" : hunk) = drop 5 <$> find onNewSide message
     onNewSide s = take 1 s `elem` [" ", "+"]
 rewordedTo _ = Nothing
 
--- | Parse `git range-diff` output, one 'Commit' per header line.
-parse :: String -> [Commit]
-parse = map (uncurry mkCommit) . chunks . lines
+-- | Parse `git range-diff` output, one 'Paired' per header line.
+parse :: String -> [Paired]
+parse = map (uncurry mkPaired) . chunks . lines
+
+-- | One commit as `git range-diff` reports it, and the commit git paired it
+-- with.
+data Paired = Paired
+  { -- | the old version of a commit git paired with one whose patch is not the
+    -- same, and nothing for any other commit
+    pdRewrittenFrom :: Maybe CommitSha,
+    -- | the commit, with the interdiff git printed for one rewritten
+    pdCommit :: Commit
+  }
 
 -- | Range-diffs taken in the repo in @dir@, as the `git` CLI takes them.
 git :: FilePath -> Handle
-git dir = Handle {rangeDiff = gitRangeDiff dir}
+git dir = Handle {rangeDiff = \oldBase oldHead newBase newHead -> map pdCommit <$> paired dir oldBase oldHead newBase newHead}
 
--- Read what `git range-diff` prints for the two ranges. Colour is asked off
--- outright, since a repo or user configured to have it always would otherwise
--- wrap every header in escape codes. Context is asked for outright too, since
--- one configured to have none would leave a reworded subject without the line
--- that says it is the subject; see 'rewordedTo'. Merges are asked for too,
--- which git leaves out otherwise: each as the diff of what it holds against
--- what merging its parents would have left, which is how its conflicts were
--- resolved.
-gitRangeDiff :: FilePath -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
-gitRangeDiff dir oldBase oldHead newBase newHead = parse <$> command dir args
+-- | Read what `git range-diff` prints for the two ranges in the repo in @dir@.
+-- Colour is asked off outright, since a repo or user configured to have it
+-- always would otherwise wrap every header in escape codes. Context is asked
+-- for outright too, since one configured to have none would leave a reworded
+-- subject without the line that says it is the subject; see 'rewordedTo'.
+-- Merges are asked for too, which git leaves out otherwise: each as the diff
+-- of what it holds against what merging its parents would have left, which is
+-- how its conflicts were resolved. And every sha is asked for in full, so that
+-- none of them can be taken for another commit by whatever is asked about it
+-- next.
+paired :: FilePath -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Paired]
+paired dir oldBase oldHead newBase newHead = parse <$> command dir args
   where
-    args = ["range-diff", "--no-color", "--unified=3", "--remerge-diff", range oldBase oldHead, range newBase newHead]
+    args = ["range-diff", "--no-color", "--unified=3", "--remerge-diff", "--no-abbrev", range oldBase oldHead, range newBase newHead]
     range a b = shaText a ++ ".." ++ shaText b
 
 -- | Run a git command in the repo in @dir@, handing back what it printed on

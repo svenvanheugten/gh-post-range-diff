@@ -2,16 +2,19 @@
 -- repo, rewrite it, take a range-diff over the two versions, and check that it
 -- reads back as what the rewrite did.
 --
--- There are two ways to take one, and the same examples hold of both. All they
--- differ on is how a rewritten commit's interdiff is written, which is what a
--- 'Way' says, and which commits they pair up: git guesses that from how alike
--- two patches are, and jj reads it off the change ids.
+-- There are three ways to take one, and the same examples hold of all of them.
+-- All they differ on is how a rewritten commit's interdiff is written, which is
+-- what a 'Way' says, and which commits they pair up: git guesses that from how
+-- alike two patches are, and jj reads it off the change ids. The third pairs
+-- the commits up the way git does and writes the interdiffs the way jj does,
+-- so it shares git's own examples too: see 'gitPairing'.
 --
 -- "RangeDiff.GitSpec" and "RangeDiff.JjSpec" run these 'examples' once per
 -- way, and each of them adds examples of its own.
 module RangeDiff.Test.Examples
   ( Way (..),
     examples,
+    gitPairing,
 
     -- * The commits the examples are built from
     version,
@@ -21,7 +24,6 @@ module RangeDiff.Test.Examples
     addWidget,
     widget,
     numbered,
-    numberedContents,
 
     -- * What a range-diff should read as
     unchanged,
@@ -59,7 +61,7 @@ data Way = Way
     wayBodyReworded :: [String]
   }
 
--- | What either way has to read the same, but for how it writes an interdiff.
+-- | What every way has to read the same, but for how it writes an interdiff.
 examples :: Way -> SpecWith Repo
 examples way = do
   it "reads a commit rebased onto a base that moved as unchanged, under its new sha" $ \repo -> do
@@ -226,6 +228,26 @@ examples way = do
     rangeDiff (wayHandle way) repo old now
       `shouldRead` [unchanged t' "Test the widget", updated way (wayAmended way) w' "Add the widget", unchanged m' "Merge the tests"]
 
+-- | What every way that pairs commits up the way `git range-diff` does has to
+-- read the same, but for how it writes an interdiff.
+gitPairing :: Way -> SpecWith Repo
+gitPairing way = do
+  it "reads a commit rewritten past recognition as one removed and one added" $ \repo -> do
+    (old, now, wOld, w') <- rewrittenPastRecognition repo
+    rangeDiff (wayHandle way) repo old now
+      `shouldRead` [removed wOld "Add the widget", added w' "Add the widget"]
+
+  it "reads ranges of ten commits, which git pads, with an interdiff in the middle" $ \repo -> do
+    root <- initial repo
+    cs <- stack repo root (map numbered [1 .. 3] ++ [addWidget "30"] ++ map numbered [5 .. 10])
+    old <- version repo root (last cs)
+    amend repo (cs !! 3) [("widget.py", widget "5")]
+    now <- version repo root (last cs)
+    cs' <- shas repo cs
+    let readAs 4 s = updated way (wayAmended way) s "Add the widget"
+        readAs n s = unchanged s ("Number " ++ show n)
+    rangeDiff (wayHandle way) repo old now `shouldRead` zipWith readAs [1 :: Int ..] cs'
+
 -- * The commits the examples are built from
 
 -- | A version of the branch, as a range-diff is taken over it: where it forks
@@ -294,10 +316,7 @@ addTest =
 
 -- | The @n@th of a run of commits, each writing a file of its own.
 numbered :: Int -> Patch
-numbered n = Patch ("Number " ++ show n) [("f" ++ show n ++ ".txt", numberedContents n)]
-
-numberedContents :: Int -> String
-numberedContents n = unlines ["file " ++ show n ++ ", line " ++ show k | k <- [1 .. 5 :: Int]]
+numbered n = Patch ("Number " ++ show n) [("f" ++ show n ++ ".txt", unlines ["file " ++ show n ++ ", line " ++ show k | k <- [1 .. 5 :: Int]])]
 
 -- * What a range-diff should read as
 
