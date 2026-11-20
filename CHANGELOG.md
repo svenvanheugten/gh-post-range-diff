@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Show each rewritten commit with `jj interdiff` wherever `jj` is installed, also for commits that weren't created with `jj`, since the interdiffs returned by `jj interdiff` are much easier to read. `git range-diff` still pairs those commits up. The GitHub Action installs `jj`, so it now does this by default. (https://github.com/svenvanheugten/gh-post-range-diff/pull/94)
+- Show each rewritten commit with `jj interdiff` wherever `jj` is installed, also for commits that weren't created with `jj`, since the interdiffs returned by `jj interdiff` are much easier to read. `git range-diff` still pairs those commits up. The GitHub Action installs `jj`, so it now does this by default. Pass `--no-jj`, or set `no-jj` to `true` in the GitHub Action, to take the range-diff with `git` alone. (https://github.com/svenvanheugten/gh-post-range-diff/pull/94, https://github.com/svenvanheugten/gh-post-range-diff/pull/95)
 
 ### Fixed
 

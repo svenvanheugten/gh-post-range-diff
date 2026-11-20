@@ -57,6 +57,8 @@ If `jj` is on the `PATH`, the commits are still paired up by `git range-diff`, b
 
 If every commit in _both_ versions of the branch was made with `jj`, the commits are _paired up_ by `jj` too. Commits made with `jj` carry a change ID that survives every rewrite, so the tool doesn't have to guess which commit of the old version of your branch is which commit of the new one, the way `git range-diff` does by comparing how alike their diffs are. `git range-diff` can guess wrong, for example by reporting a rewritten commit as combination of a dropped and an added commit, or by simply matching up commits that are completely unrelated.
 
+Pass `--no-jj` to take the range-diff with `git` alone, even where `jj` is on the `PATH`. In the GitHub Action, set `no-jj` to `true`, which also skips installing `jj`.
+
 ## GitHub Actions
 
 The recommended way to use this is as a workflow that comments on every push to a Pull Request. Add `.github/workflows/range-diff.yml`:
