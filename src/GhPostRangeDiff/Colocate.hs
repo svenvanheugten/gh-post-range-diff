@@ -2,7 +2,7 @@
 -- 'RangeDiff.Auto.auto' can take the range-diff with jj there.
 module GhPostRangeDiff.Colocate (colocatingAuto) where
 
-import Control.Monad (unless, void, when)
+import Control.Monad (void, when)
 import Data.List.Extra (trim)
 import RangeDiff qualified
 import RangeDiff.Auto (auto)
@@ -25,23 +25,21 @@ colocatingAuto dir = RangeDiff.Handle {RangeDiff.rangeDiff = colocatingRangeDiff
 -- | Make the checkout in @dir@ into a colocated repo that holds the given
 -- commits.
 --
--- A colocated repo is left exactly as it is. jj is already keeping it, so it
--- holds the commits already -- and it is somebody's own repo, which is reason
--- enough not to write anything to it that isn't asked for.
+-- It is a checkout made for the tool to run in, so it is made into one in
+-- place, and there is nothing to take down afterwards. Where something made
+-- it into one already -- an earlier run, or an earlier step of the workflow --
+-- jj is only told to take in the commits.
 --
--- A repo that isn't colocated is a checkout made for the tool to run in, so it
--- is made into one in place, and there is nothing to take down afterwards.
--- What it does need is a ref on each commit to ask about. jj only holds the
+-- Either way, it needs a ref on each commit to ask about. jj only holds the
 -- commits some ref leads it to, and the commit a force-push left behind is
 -- reachable from nothing -- so without one it is a commit jj would say
 -- doesn't exist. The refs go under a namespace jj reads: it takes in
 -- refs/heads, refs/tags and refs/remotes, and nothing else.
 colocate :: FilePath -> [CommitSha] -> IO ()
 colocate dir shas = do
+  mapM_ keep shas
   already <- RangeDiff.Jj.colocated dir
-  unless already $ do
-    mapM_ keep shas
-    void (jjIn dir ["git", "init", "--colocate"])
+  void (jjIn dir (if already then ["git", "import"] else ["git", "init", "--colocate"]))
   where
     keep sha = void (RangeDiff.Git.command dir ["update-ref", "refs/heads/rd-" ++ shaText sha, shaText sha])
 

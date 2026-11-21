@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Don't implicitly run `jj git init --colocate` when you run the tool manually against a local checkout.
+
 ## [0.8.0] - 2026-11-20
 
 ### Added

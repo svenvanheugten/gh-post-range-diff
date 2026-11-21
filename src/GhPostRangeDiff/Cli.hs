@@ -11,9 +11,11 @@ import GhPostRangeDiff.GitHub qualified as GitHub
 import GhPostRangeDiff.Render (UnchangedVisibility (..))
 import GhPostRangeDiff.Run (Reported (..), run)
 import RangeDiff qualified
+import RangeDiff.Auto (auto)
 import RangeDiff.CommitSha (CommitSha, commitSha)
 import RangeDiff.Git qualified
 import RangeDiff.Jj qualified
+import System.Environment (lookupEnv)
 
 -- | Run the CLI on @args@ in the repo in @dir@, reaching a pull request by its
 -- number through @github@, and hand back what it has to say, if anything.
@@ -26,12 +28,18 @@ cli github dir argv = do
   -- out of the report, and --no-jj takes the range-diff with git alone.
   let (flags, args) = partition ("--" `isPrefixOf`) argv
   unless (all (`elem` ["--hide-unchanged", "--no-jj"]) flags) usage
-  -- A colocated repo is somebody's own, and already holds every commit there
-  -- is to ask about, so nothing is fetched into it.
-  theirs <- RangeDiff.Jj.colocated dir
-  let repo = if theirs then Git.noFetching dir else Git.git dir
-      visibility = if "--hide-unchanged" `elem` flags then HideUnchanged else ShowUnchanged
-      rd = if "--no-jj" `elem` flags then RangeDiff.Git.git dir else colocatingAuto dir
+  -- GitHub Actions runs it in a checkout made for it, so we can fetch into it
+  -- and make it into a colocated jj repo ourselves. Anywhere else, the repo is
+  -- somebody's own, and jj is only used where it already is one.
+  inGitHubActions <- (== Just "true") <$> lookupEnv "GITHUB_ACTIONS"
+  (repo, jjRd) <-
+    if inGitHubActions
+      then pure (Git.git dir, colocatingAuto dir)
+      else do
+        colocated <- RangeDiff.Jj.colocated dir
+        pure (if colocated then Git.noFetching dir else Git.git dir, auto dir)
+  let visibility = if "--hide-unchanged" `elem` flags then HideUnchanged else ShowUnchanged
+      rd = if "--no-jj" `elem` flags then RangeDiff.Git.git dir else jjRd
   case args of
     [pr] -> manual repo rd (github pr) visibility
     [pr, before, after]

@@ -53,7 +53,7 @@ Both cases are covered by tens of thousands of [property-based tests](https://en
 
 ## Better reports with [jj](https://jj-vcs.github.io/jj/)
 
-If `jj` is on the `PATH`, the tool will use it to produce reports that are much easier to read.
+In `jj` checkouts of your repository, the tool will use `jj` to produce reports that are much easier to read.
 
 If your commits _weren't_ made with `jj`, it will still use `git range-diff` to line up your commits, but it will then use `jj interdiff` to actually compare the individual commits. Unlike `git range-diff`, `jj interdiff` compares the _results_ of applying the patches, rather than the patches themselves, which suppresses the noise that comes from unrelated changes to context lines.
 
@@ -67,7 +67,7 @@ The GitHub Action will use a `jj` checkout of your repository by default, so tha
           no-jj: true
 ```
 
-To turn this behaviour off when running the tool locally, pass in the `--no-jj` flag.
+When running the tool locally, this behaviour will only be triggered if your checkout is already a (co-located) `jj` repository. To forcefully turn it off in that situation, pass in the `--no-jj` flag.
 
 ## GitHub Actions
 

@@ -4,6 +4,7 @@
 module GhPostRangeDiff.CliSpec (spec) where
 
 import Control.Exception (ErrorCall (..))
+import Control.Monad (void)
 import GhPostRangeDiff.Git (abbrev)
 import GhPostRangeDiff.PullRequest (PullRequest, base, checkout, cli, comments, inPullRequests, number, push, repo, root)
 import GhPostRangeDiff.Render (UnchangedVisibility (..), format)
@@ -11,8 +12,10 @@ import RangeDiff qualified
 import RangeDiff.Auto (auto)
 import RangeDiff.CommitSha (CommitSha, shaText)
 import RangeDiff.Git qualified
+import RangeDiff.Jj qualified
 import RangeDiff.Test.Repo (ChangeId, Patch (..))
 import RangeDiff.Test.Repo qualified as Repo
+import System.Process (readProcess)
 import Test.Hspec
 
 -- | Push the branch with the gadget on it, and hand that back.
@@ -92,11 +95,58 @@ spec = inPullRequests $ do
       expected <- report auto pr HideUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
-    it "takes the range-diff with git alone with --no-jj" $ \pr -> do
+    it "takes the range-diff with jj in GitHub Actions" $ \pr -> do
       (g, _) <- gadget pr
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
-      cli pr ["--no-jj", number, shaText w1, shaText w2] `shouldReturn` Nothing
+      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (cli pr [number, shaText w1, shaText w2]) `shouldReturn` Nothing
+      expected <- report RangeDiff.Jj.jj pr ShowUnchanged w1 w2
+      comments pr `shouldReturn` [expected]
+
+    it "takes the range-diff with jj in GitHub Actions in a checkout that already is a colocated jj repo" $ \pr -> do
+      _ <- Repo.colocate (checkout pr)
+      (g, _) <- gadget pr
+      (w, w1) <- widget pr g
+      w2 <- rework pr w 2
+      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (cli pr [number, shaText w1, shaText w2]) `shouldReturn` Nothing
+      expected <- report RangeDiff.Jj.jj pr ShowUnchanged w1 w2
+      comments pr `shouldReturn` [expected]
+
+    it "takes the range-diff with git alone with --no-jj in GitHub Actions, and leaves the checkout that way" $ \pr -> do
+      (g, _) <- gadget pr
+      (w, w1) <- widget pr g
+      w2 <- rework pr w 2
+      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (cli pr ["--no-jj", number, shaText w1, shaText w2]) `shouldReturn` Nothing
+      expected <- report RangeDiff.Git.git pr ShowUnchanged w1 w2
+      comments pr `shouldReturn` [expected]
+      RangeDiff.Jj.colocated (checkout pr) `shouldReturn` False
+
+    it "takes the range-diff with git alone in GitHub Actions where there is no jj" $ \pr -> do
+      (g, _) <- gadget pr
+      (w, w1) <- widget pr g
+      w2 <- rework pr w 2
+      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (Repo.withoutJj (cli pr [number, shaText w1, shaText w2])) `shouldReturn` Nothing
+      expected <- report RangeDiff.Git.git pr ShowUnchanged w1 w2
+      comments pr `shouldReturn` [expected]
+
+    it "takes the range-diff with jj outside GitHub Actions in somebody's own jj repo, and fetches nothing into it" $ \pr -> do
+      _ <- Repo.colocate (checkout pr)
+      let pull = void (readProcess "jj" ["-R", checkout pr, "git", "fetch", "--quiet"] "")
+      (g, _) <- gadget pr
+      (w, w1) <- widget pr g
+      pull
+      w2 <- rework pr w 2
+      pull
+      cli pr [number, shaText w1, shaText w2] `shouldReturn` Nothing
+      expected <- report RangeDiff.Jj.jj pr ShowUnchanged w1 w2
+      comments pr `shouldReturn` [expected]
+      readProcess "git" ["-C", checkout pr, "for-each-ref", "refs/rd"] "" `shouldReturn` ""
+
+    it "takes the range-diff with git alone outside GitHub Actions in a repo that isn't colocated" $ \pr -> do
+      (g, _) <- gadget pr
+      (w, w1) <- widget pr g
+      w2 <- rework pr w 2
+      cli pr [number, shaText w1, shaText w2] `shouldReturn` Nothing
       expected <- report RangeDiff.Git.git pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
