@@ -55,7 +55,7 @@ Both cases are covered by tens of thousands of [property-based tests](https://en
 
 In `jj` checkouts of your repository, the tool will use `jj` to produce reports that are much easier to read.
 
-If your commits _weren't_ made with `jj`, it will still use `git range-diff` to line up your commits, but it will then use `jj interdiff` to actually compare the individual commits. Unlike `git range-diff`, `jj interdiff` compares the _results_ of applying the patches, rather than the patches themselves, which suppresses the noise that comes from unrelated changes to context lines.
+If your commits _weren't_ made with `jj`, it will still use `git range-diff` to line up your commits, but it will then use `jj interdiff` to actually compare the individual commits. Unlike `git range-diff`, `jj interdiff` compares the _results_ of applying the patches, rather than the patches themselves, which suppresses the noise that comes from unrelated changes to context lines. Unlike a plain `git diff`, it internally rebases the old version of a commit onto the new version's parents first, which leaves out everything that changed underneath the commit.
 
 If all commits in _both_ versions of the branch were made with `jj`, the tool will skip `git range-diff` entirely, and it will use [JJ Change IDs](https://docs.jj-vcs.dev/latest/glossary/#change-id) to match up your commits, which takes out the guesswork of trying to figure out which commit is which in the old and new version of the branch.
 
