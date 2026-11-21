@@ -7,8 +7,9 @@
 -- an interdiff nothing like one another, so the answer says outright which
 -- wrote it.
 --
--- The tool runs in a CI checkout, so that is where every case is taken but
--- one: see 'inCheckout'. The one is a repo somebody keeps with jj themselves.
+-- Most cases are taken in a checkout: see 'inCheckout', and
+-- 'inColocatedCheckout' for one made into a colocated jj repo. The rest are
+-- taken in a repo somebody keeps with jj themselves.
 module RangeDiff.AutoSpec (spec) where
 
 import Control.Monad (void)
@@ -25,25 +26,39 @@ import Test.Hspec
 
 spec :: Spec
 spec = describe "auto" $ inRepos $ do
-  it "takes the range-diff with jj where every commit carries a change id" $ \repo -> do
-    (old, now) <- rewritten repo
-    inCheckout pickedJj (repoDir repo) old now
+  describe "in a checkout made into a colocated jj repo" $ do
+    it "takes the range-diff with jj where every commit carries a change id" $ \repo -> do
+      (old, now) <- rewritten repo
+      inColocatedCheckout pickedJj (repoDir repo) old now
 
-  it "pairs commits with git, and diffs them with jj, where a commit carries none" $ \_ ->
-    withPlainRepo (inCheckout pickedPairedByGit)
+    it "pairs commits with git, and diffs them with jj, where a commit carries none" $ \_ ->
+      withPlainRepo (inColocatedCheckout pickedPairedByGit)
 
-  it "pairs commits with git, and diffs them with jj, where only some of the commits carry one" $ \_ ->
-    withMixedRepo (inCheckout pickedPairedByGit)
+    it "pairs commits with git, and diffs them with jj, where only some of the commits carry one" $ \_ ->
+      withMixedRepo (inColocatedCheckout pickedPairedByGit)
 
-  it "falls back on git alone where there is no jj" $ \repo -> do
-    (old, now) <- rewritten repo
-    inCheckout pickedGitAlone (repoDir repo) old now
+    it "falls back on git alone where there is no jj" $ \repo -> do
+      (old, now) <- rewritten repo
+      inColocatedCheckout (\dir o n -> withoutJj (pickedGitAlone dir o n)) (repoDir repo) old now
+
+  describe "in a checkout jj was never set up in" $
+    it "takes the range-diff with git alone, and leaves the checkout that way" $ \repo -> do
+      (old, now) <- rewritten repo
+      inCheckout
+        ( \dir o n -> do
+            pickedGitAlone dir o n
+            RangeDiff.Jj.colocated dir `shouldReturn` False
+        )
+        (repoDir repo)
+        old
+        now
 
   -- Where the branch was built: jj holds every commit already, and is asked
   -- about the repo as it is.
-  it "takes the range-diff with jj in a repo somebody keeps with jj" $ \repo -> do
-    (old, now) <- rewritten repo
-    pickedJj (repoDir repo) old now
+  describe "in a repo somebody keeps with jj" $
+    it "takes the range-diff with jj" $ \repo -> do
+      (old, now) <- rewritten repo
+      pickedJj (repoDir repo) old now
 
 -- | Run @expect@ on the two versions of a branch the way the tool meets them
 -- where it runs for real: in a CI checkout of the repo in @origin@. That is a
@@ -57,13 +72,19 @@ inCheckout expect origin old@(oldBase, oldHead) now@(newBase, newHead) =
     gitIn dir (["fetch", "--quiet", origin] ++ map shaText (nub [oldBase, oldHead, newBase, newHead]))
     expect dir old now
 
+-- | 'inCheckout', with a branch on each commit and jj set up over the
+-- checkout, colocated with it.
+inColocatedCheckout :: (FilePath -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> Expectation) -> FilePath -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> Expectation
+inColocatedCheckout expect = inCheckout $ \dir old@(oldBase, oldHead) now@(newBase, newHead) -> do
+  mapM_ (\c -> gitIn dir ["branch", "rd-" ++ shaText c, shaText c]) (nub [oldBase, oldHead, newBase, newHead])
+  void (colocate dir)
+  expect dir old now
+
 -- | Expect 'auto' to take the range-diff of @old@ against @now@ in the repo in
 -- @dir@ the way @way@ takes it, and not the way @other@ does.
 --
 -- Which way was taken is read off the answer, so the two have to answer
--- differently for it to say anything. 'auto' goes first, while the repo is as
--- the example left it: jj sets up a repo it is asked about, and 'auto' has to
--- be able to do without that.
+-- differently for it to say anything.
 picked :: (FilePath -> RangeDiff.Handle) -> (FilePath -> RangeDiff.Handle) -> FilePath -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> Expectation
 picked way other dir (oldBase, oldHead) (newBase, newHead) = do
   commits <- takeWith auto
@@ -83,11 +104,10 @@ pickedJj = picked RangeDiff.Jj.jj RangeDiff.Git.git
 pickedPairedByGit :: FilePath -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> Expectation
 pickedPairedByGit = picked RangeDiff.Jj.pairedByGit RangeDiff.Git.git
 
--- | Expect 'auto', with no jj to be found, to take the range-diff with git
--- alone.
+-- | Expect 'auto' to take the range-diff with git alone.
 pickedGitAlone :: FilePath -> (CommitSha, CommitSha) -> (CommitSha, CommitSha) -> Expectation
 pickedGitAlone dir (oldBase, oldHead) (newBase, newHead) = do
-  commits <- withoutJj (takeWith auto)
+  commits <- takeWith auto
   wanted <- takeWith RangeDiff.Git.git
   commits `shouldBe` wanted
   where

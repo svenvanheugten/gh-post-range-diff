@@ -6,9 +6,9 @@
 -- and it diffs the commits rather than their printed patches. Lining the
 -- ranges up that way only works where those change ids are there to read, so
 -- where they are missing, `git range-diff` has to guess which commit is which
--- -- but the diffing can still be left to jj. Only where there is no `jj` at
--- all does "RangeDiff.Git" fall back on what `git range-diff` can work out for
--- itself.
+-- -- but the diffing can still be left to jj. Where there is no `jj`, or the
+-- repo isn't colocated, "RangeDiff.Git" falls back on what `git range-diff`
+-- can work out for itself.
 module RangeDiff.Auto
   ( auto,
   )
@@ -21,20 +21,18 @@ import RangeDiff.CommitSha (CommitSha, shaText)
 import RangeDiff.Git qualified as Git
 import RangeDiff.Jj qualified as Jj
 
--- | Range-diffs taken in the repo in @dir@, with jj as far as the commits and
--- the machine allow it, and with git the rest of the way.
+-- | Range-diffs taken in the repo in @dir@, with jj as far as the commits, the
+-- repo and the machine allow it, and with git the rest of the way.
 auto :: FilePath -> Handle
 auto dir = Handle {rangeDiff = autoRangeDiff dir}
 
 autoRangeDiff :: FilePath -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
 autoRangeDiff dir oldBase oldHead newBase newHead = do
-  installed <- Jj.installed
-  -- Without a jj, there is no point reading the change ids: there is nothing
-  -- to read them with.
-  byChangeIds <- if installed then allCarryChangeIds dir [(oldBase, oldHead), (newBase, newHead)] else pure False
+  withJj <- (&&) <$> Jj.installed <*> Jj.colocated dir
+  byChangeIds <- if withJj then allCarryChangeIds dir [(oldBase, oldHead), (newBase, newHead)] else pure False
   let handle
         | byChangeIds = Jj.jj dir
-        | installed = Jj.pairedByGit dir
+        | withJj = Jj.pairedByGit dir
         | otherwise = Git.git dir
   rangeDiff handle oldBase oldHead newBase newHead
 

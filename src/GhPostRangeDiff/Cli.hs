@@ -3,6 +3,7 @@ module GhPostRangeDiff.Cli (cli) where
 
 import Control.Monad (unless)
 import Data.List (isPrefixOf, partition, unsnoc)
+import GhPostRangeDiff.Colocate (colocatingAuto)
 import GhPostRangeDiff.Git (abbrev)
 import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.GitHub (Ev (..), Ref (..))
@@ -10,7 +11,6 @@ import GhPostRangeDiff.GitHub qualified as GitHub
 import GhPostRangeDiff.Render (UnchangedVisibility (..))
 import GhPostRangeDiff.Run (Reported (..), run)
 import RangeDiff qualified
-import RangeDiff.Auto (auto)
 import RangeDiff.CommitSha (CommitSha, commitSha)
 import RangeDiff.Git qualified
 import RangeDiff.Jj qualified
@@ -31,7 +31,7 @@ cli github dir argv = do
   theirs <- RangeDiff.Jj.colocated dir
   let repo = if theirs then Git.noFetching dir else Git.git dir
       visibility = if "--hide-unchanged" `elem` flags then HideUnchanged else ShowUnchanged
-      rd = if "--no-jj" `elem` flags then RangeDiff.Git.git dir else auto dir
+      rd = if "--no-jj" `elem` flags then RangeDiff.Git.git dir else colocatingAuto dir
   case args of
     [pr] -> manual repo rd (github pr) visibility
     [pr, before, after]
