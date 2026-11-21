@@ -21,7 +21,7 @@ import GhPostRangeDiff.FakeGitHub qualified as FakeGitHub
 import GhPostRangeDiff.Git qualified as Git
 import GhPostRangeDiff.GitHub (Ref (..))
 import RangeDiff.CommitSha (CommitSha, shaText)
-import RangeDiff.Test.Repo (ChangeId, Repo, configure, inRepos, initial, repoDir, sha)
+import RangeDiff.Test.Repo (ChangeId, Repo, configure, inRepos, initial, repoDir, sha, withEnvironment)
 import System.FilePath (takeDirectory, (</>))
 import System.Process (readProcess)
 import Test.Hspec (Spec, SpecWith, aroundWith)
@@ -59,7 +59,7 @@ withPullRequest act r = do
   fake <- FakeGitHub.newPullRequest (Git.git (repoDir r)) s s
   let pr = PullRequest r c fake
   git ["clone", "--quiet", "--no-checkout", repoDir r, checkout pr]
-  act pr
+  withEnvironment [("GITHUB_ACTIONS", Nothing)] (act pr)
 
 -- | The commit the branch the pull request targets is on.
 base :: PullRequest -> IO CommitSha
