@@ -103,23 +103,28 @@ handle :: Repo -> Git.Handle
 handle repo =
   Git.Handle
     { Git.fetch = fetch repo,
+      Git.baseTip = baseTip repo,
       Git.isAncestorOf = \a b -> asking (\m -> isAncestorOf m a b),
       Git.mergeBase = \a b -> asking (\m -> mergeBase m a b)
     }
   where
     asking f = f <$> readIORef (rpCommits repo)
 
--- | Bring a branch in from origin, and the commits named alongside it, and
--- hand back where that branch is. What is under them comes too: a fetch brings
--- the history of whatever it fetches.
-fetch :: Repo -> String -> [CommitSha] -> IO CommitSha
+-- | Bring a branch in from origin, and the commits named alongside it. What is
+-- under them comes too: a fetch brings the history of whatever it fetches. The
+-- branch lands on a branch of the same name.
+fetch :: Repo -> String -> [CommitSha] -> IO ()
 fetch repo b ss = do
   origin <- maybe (fail "fetch: the repo has no origin") pure (rpOrigin repo)
   m <- readIORef (rpCommits origin)
   branches <- readIORef (rpBranches origin)
   let tip = fromMaybe (error ("origin has no branch " ++ b)) (Map.lookup b branches)
   store repo (concatMap (ancestry m) (tip : ss))
-  pure tip
+  place repo b tip
+
+-- | Where the last fetch of a branch found it.
+baseTip :: Repo -> String -> IO CommitSha
+baseTip repo b = fromMaybe (error ("never fetched branch " ++ b)) . Map.lookup b <$> readIORef (rpBranches repo)
 
 -- * Reading the commits
 
