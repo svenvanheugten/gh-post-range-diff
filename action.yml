@@ -38,7 +38,7 @@ runs:
 
     # With `jj` there, the report is worked out by the change ids jj writes on
     # its commits rather than by guessing which commit of the old branch is
-    # which commit of the new one; see "Sharper reports" in the README. Where a
+    # which commit of the new one; see "Better reports" in the README. Where a
     # branch carries no change ids, `git range-diff` does the guessing, but
     # each rewrite is still shown with `jj interdiff`, which leaves out what
     # only moved because the base branch did. Nothing has to be set up in the

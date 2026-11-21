@@ -51,13 +51,23 @@ It can always work that out in these two cases, which should cover _most_ common
 
 Both cases are covered by tens of thousands of [property-based tests](https://en.wikipedia.org/wiki/Software_testing#Property_testing). Anything outside them isn't supported. In particular, once the base branch has been force-pushed at any point while your PR is open, every push to your branch has to be on the latest version of the base branch, or the report will include commits from the base branch.
 
-## Sharper reports with [jj](https://jj-vcs.github.io/jj/)
+## Better reports with [jj](https://jj-vcs.github.io/jj/)
 
-If [`jj`](https://jj-vcs.github.io/jj/) is on the `PATH` (which is the case in the GitHub Action), the commits are still paired up by `git range-diff`, but each pair is then diffed with `jj interdiff`, also for commits that weren't created with `jj`. `git range-diff`'s own interdiff compares the formatted _patches_ of the old and the new version of a commit, which can be pretty hard to read, and might contain noisy context changes from the base branch. `jj interdiff` compares what the patches _result in_, rather than just comparing the patches themselves, which is most likely what you're actally interested in.
+If `jj` is on the `PATH`, the tool will use it to produce reports that are much easier to read.
 
-Furthermore, if every commit in _both_ versions of the branch turn out to be created with `jj`, the commits will be paired up by the tool itself by using the [JJ Change IDs](https://docs.jj-vcs.dev/latest/glossary/#change-id), and `git range-diff` will be skipped entirely. This leads to even better reports, as it no longer has to _guess_ which commits should be paired together, but instead has a stable identifier to go by.
+If your commits _weren't_ made with `jj`, it will still use `git range-diff` to line up your commits, but it will then use `jj interdiff` to actually compare the individual commits. Unlike `git range-diff`, `jj interdiff` compares the _results_ of applying the patches, rather than the patches themselves, which suppresses the noise that comes from unrelated changes to context lines.
 
-Pass `--no-jj` to take the range-diff with `git` alone, even where `jj` is on the `PATH`. In the GitHub Action, set `no-jj` to `true`, which also skips installing `jj`.
+If all commits in _both_ versions of the branch were made with `jj`, the tool will skip `git range-diff` entirely, and it will use [JJ Change IDs](https://docs.jj-vcs.dev/latest/glossary/#change-id) to match up your commits, which takes out the guesswork of trying to figure out which commit is which in the old and new version of the branch.
+
+The GitHub Action will use a `jj` checkout of your repository by default, so that you get these benefits automatically. If it doesn't work properly for you for some reason, you can disable this behaviour by setting `no-jj` to `true` (but feel free to also report a bug):
+
+```yaml
+      - uses: svenvanheugten/gh-post-range-diff@v0.8.0
+        with:
+          no-jj: true
+```
+
+To turn this behaviour off when running the tool locally, pass in the `--no-jj` flag.
 
 ## GitHub Actions
 
