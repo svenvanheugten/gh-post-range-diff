@@ -31,7 +31,8 @@ bases repo pr oldHead newHead = do
       <$> GitHub.timeline pr
 
   -- Fetch current base tip, both heads, and every historical base oid.
-  newBaseTip <- Git.fetch repo base (nub (oldHead : newHead : recorded))
+  Git.fetch repo base (nub (oldHead : newHead : recorded))
+  newBaseTip <- Git.baseTip repo base
   if null recorded
     then Bases <$> mergeBase newBaseTip oldHead <*> mergeBase newBaseTip newHead
     else do

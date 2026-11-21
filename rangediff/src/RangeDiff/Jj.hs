@@ -8,9 +8,8 @@
 -- better of the two where it can be used, which is what "RangeDiff.Auto"
 -- decides.
 --
--- What is left is to have a repo jj can be asked about, to walk the two ranges
--- together, and to ask `jj interdiff` what a rewrite did to each commit both
--- of them hold.
+-- What is left is to walk the two ranges together, and to ask `jj interdiff`
+-- what a rewrite did to each commit both of them hold.
 --
 -- Where the commits carry no change ids, `jj interdiff` is still the better
 -- way to say what a rewrite did -- it only needs telling which two commits to
@@ -18,11 +17,12 @@
 module RangeDiff.Jj
   ( jj,
     pairedByGit,
+    installed,
     colocated,
   )
 where
 
-import Control.Monad (unless, void)
+import Control.Exception (IOException, try)
 import Data.List (find, isPrefixOf)
 import Data.List.Extra (trim)
 import Data.Maybe (isNothing)
@@ -48,15 +48,13 @@ data Entry = Entry
 
 -- | Range-diffs taken in the repo in @dir@, worked out with the `jj` CLI.
 --
--- Only good for a repo whose commits carry change ids. The repo itself needs to
--- be nothing more than a repo git can read: one jj hasn't been set up in is set
--- up here. See 'colocated'.
+-- Only good for a colocated repo whose commits carry change ids. See
+-- 'colocated'.
 jj :: FilePath -> Handle
 jj dir = Handle {rangeDiff = jjRangeDiff dir}
 
 jjRangeDiff :: FilePath -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
 jjRangeDiff dir oldBase oldHead newBase newHead = do
-  ensureJjHolds dir [oldBase, oldHead, newBase, newHead]
   was <- commitsIn dir oldBase oldHead
   now <- commitsIn dir newBase newHead
   mapM (report dir) (lineUp was now)
@@ -64,18 +62,17 @@ jjRangeDiff dir oldBase oldHead newBase newHead = do
 -- | Range-diffs taken in the repo in @dir@ with the commits paired up by
 -- `git range-diff`, and what a rewrite did to each pair said by jj.
 --
--- This is for a repo whose commits carry no change ids, where which commit is
--- which can only be guessed at. The guess is git's, but git's interdiff is a
--- diff of the two patches as they were printed, so it takes in whatever moved
--- under them: a base that changed the lines around a hunk changes the hunk's
--- context, and a commit only rebased reads as one rewritten. `jj interdiff`
--- rebases the old commit onto the new one's parents before it diffs them, so
--- only what the rewrite itself did is left.
+-- This is for a colocated repo whose commits carry no change ids, where which
+-- commit is which can only be guessed at. The guess is git's, but git's
+-- interdiff is a diff of the two patches as they were printed, so it takes in
+-- whatever moved under them: a base that changed the lines around a hunk
+-- changes the hunk's context, and a commit only rebased reads as one
+-- rewritten. `jj interdiff` rebases the old commit onto the new one's parents
+-- before it diffs them, so only what the rewrite itself did is left.
 pairedByGit :: FilePath -> Handle
 pairedByGit dir = Handle {rangeDiff = pairedRangeDiff}
   where
-    pairedRangeDiff oldBase oldHead newBase newHead = do
-      ensureJjHolds dir [oldBase, oldHead, newBase, newHead]
+    pairedRangeDiff oldBase oldHead newBase newHead =
       mapM reportPaired =<< Git.paired dir oldBase oldHead newBase newHead
     reportPaired (Git.Paired Nothing c) = pure c
     reportPaired (Git.Paired (Just was) c) = (\change -> c {cmChange = change}) <$> rewrite dir was (cmCommitSha c)
@@ -139,42 +136,25 @@ rewrite dir was now
 
 -- * Being somewhere jj can be asked
 
+-- | Is there a jj to ask?
+installed :: IO Bool
+installed = do
+  attempt <- try (readCreateProcessWithExitCode (proc "jj" ["--version"]) "")
+  pure $ case attempt of
+    Left (_ :: IOException) -> False
+    Right (code, _, _) -> code == ExitSuccess
+
 -- | Is the repo in @dir@ colocated: a jj repo and a git repo over the same
 -- working copy, which is what a repo somebody works in with jj looks like?
 --
 -- This is the one question that says whose repo this is. A colocated repo is
 -- somebody's own, kept by jj as they work, so jj already holds every commit
--- there is to ask about. A repo that isn't is a checkout something made to run
--- this in, and nobody minds what is done to it.
+-- there is to ask about.
 --
 -- The check is for jj's directory beside git's, so @dir@ has to be the root of
 -- the repo.
 colocated :: FilePath -> IO Bool
 colocated dir = doesDirectoryExist (dir ++ "/.jj")
-
--- | See to it that jj can be asked about the repo in @dir@, and that it holds
--- the given commits when it is.
---
--- A colocated repo is left exactly as it is. jj is already keeping it, so it
--- holds the commits already -- and it is somebody's own repo, which is reason
--- enough not to write anything to it that isn't asked for.
---
--- A repo that isn't colocated is made into one in place. It is a checkout
--- something made to run this in, so there is nothing to take down afterwards.
---
--- What it does need is a ref on each commit to ask about. jj only holds the
--- commits some ref leads it to, and the commit a force-push left behind is
--- reachable from nothing -- so without one it is a commit jj would say
--- doesn't exist. The refs go under a namespace jj reads: it takes in
--- refs/heads, refs/tags and refs/remotes, and nothing else.
-ensureJjHolds :: FilePath -> [CommitSha] -> IO ()
-ensureJjHolds dir shas = do
-  theirs <- colocated dir
-  unless theirs $ do
-    mapM_ keep shas
-    void (jjRun dir ["git", "init", "--colocate"])
-  where
-    keep sha = void (Git.command dir ["update-ref", "refs/heads/rd-" ++ shaText sha, shaText sha])
 
 -- * Asking jj
 

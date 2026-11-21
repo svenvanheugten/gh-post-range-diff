@@ -95,6 +95,7 @@ library
     exposed-modules:
         GhPostRangeDiff.Bases
         GhPostRangeDiff.Cli
+        GhPostRangeDiff.Colocate
         GhPostRangeDiff.Git
         GhPostRangeDiff.GitHub
         GhPostRangeDiff.Render

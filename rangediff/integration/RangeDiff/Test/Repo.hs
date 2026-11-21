@@ -28,6 +28,7 @@ module RangeDiff.Test.Repo
     sha,
     shas,
     withoutJj,
+    withEnvironment,
   )
 where
 
