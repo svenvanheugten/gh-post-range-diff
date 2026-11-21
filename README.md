@@ -40,35 +40,6 @@ This little program solves that by posting a pretty-printed version of [`git ran
 
 Long lines are wrapped to fit the width of a PR comment, carrying on below under the same diff markers after a ↪. In the real comment, GitHub turns each sha into a link to that commit.
 
-## Supported base branch movements
-
-To show only the changes to your own commits, the tool needs to know where the old and the new version of your branch forked off the base branch.
-
-It can always work that out in these two cases, which should cover _most_ common use cases:
-
-- _The base branch only ever grows_: Nobody force-pushes to it, which is usually true for PR's that target a protected branch like `main`. Your branch can fork off any commit on it, so you don't have to rebase onto the latest version before you push.
-- _Your branch is always on the latest version of the base branch_: In this case, the base branch is free to be force-pushed. This is the usual case for stacked PRs, where your PR targets another PR's branch. The easiest way to stay on the latest version is to rebase the whole stack with [`--update-refs`](https://andrewlock.net/working-with-stacked-branches-in-git-is-easier-with-update-refs/) and push all the branches at once, and to never push up just one of them.
-
-Both cases are covered by tens of thousands of [property-based tests](https://en.wikipedia.org/wiki/Software_testing#Property_testing). Anything outside them isn't supported. In particular, once the base branch has been force-pushed at any point while your PR is open, every push to your branch has to be on the latest version of the base branch, or the report will include commits from the base branch.
-
-## Better reports with [jj](https://jj-vcs.github.io/jj/)
-
-In `jj` checkouts of your repository, the tool will use `jj` to produce reports that are much easier to read.
-
-If your commits _weren't_ made with `jj`, it will still use `git range-diff` to line up your commits, but it will then use `jj interdiff` to actually compare the individual commits. Unlike `git range-diff`, `jj interdiff` compares the _results_ of applying the patches, rather than the patches themselves, which suppresses the noise that comes from unrelated changes to context lines. Unlike a plain `git diff`, it internally rebases the old version of a commit onto the new version's parents first, which leaves out everything that changed underneath the commit.
-
-If all commits in _both_ versions of the branch were made with `jj`, the tool will skip `git range-diff` entirely, and it will use [JJ Change IDs](https://docs.jj-vcs.dev/latest/glossary/#change-id) to match up your commits, which takes out the guesswork of trying to figure out which commit is which in the old and new version of the branch.
-
-The GitHub Action will use a `jj` checkout of your repository by default, so that you get these benefits automatically. If it doesn't work properly for you for some reason, you can disable this behaviour by setting `no-jj` to `true` (but feel free to also report a bug):
-
-```yaml
-      - uses: svenvanheugten/gh-post-range-diff@v0.8.1
-        with:
-          no-jj: true
-```
-
-When running the tool locally, this behaviour will only be triggered if your checkout is already a (co-located) `jj` repository. To forcefully turn it off in that situation, pass in the `--no-jj` flag.
-
 ## GitHub Actions
 
 The recommended way to use this is as a workflow that comments on every push to a Pull Request. Add `.github/workflows/range-diff.yml`:
@@ -113,6 +84,35 @@ The report then comes out like this:
 > 🟢 **Added** `806d19e` Test the widget
 >
 > ⚪ **4 unchanged commits not shown**
+
+## Supported base branch movements
+
+To show only the changes to your own commits, the tool needs to know where the old and the new version of your branch forked off the base branch.
+
+It can always work that out in these two cases, which should cover _most_ common use cases:
+
+- _The base branch only ever grows_: Nobody force-pushes to it, which is usually true for PR's that target a protected branch like `main`. Your branch can fork off any commit on it, so you don't have to rebase onto the latest version before you push.
+- _Your branch is always on the latest version of the base branch_: In this case, the base branch is free to be force-pushed. This is the usual case for stacked PRs, where your PR targets another PR's branch. The easiest way to stay on the latest version is to rebase the whole stack with [`--update-refs`](https://andrewlock.net/working-with-stacked-branches-in-git-is-easier-with-update-refs/) and push all the branches at once, and to never push up just one of them.
+
+Both cases are covered by tens of thousands of [property-based tests](https://en.wikipedia.org/wiki/Software_testing#Property_testing). Anything outside them isn't supported. In particular, once the base branch has been force-pushed at any point while your PR is open, every push to your branch has to be on the latest version of the base branch, or the report will include commits from the base branch.
+
+## Better reports with [jj](https://jj-vcs.github.io/jj/)
+
+In `jj` checkouts of your repository, the tool will use `jj` to produce reports that are much easier to read.
+
+If your commits _weren't_ made with `jj`, it will still use `git range-diff` to line up your commits, but it will then use `jj interdiff` to actually compare the individual commits. Unlike `git range-diff`, `jj interdiff` compares the _results_ of applying the patches, rather than the patches themselves, which suppresses the noise that comes from unrelated changes to context lines. Unlike a plain `git diff`, it internally rebases the old version of a commit onto the new version's parents first, which leaves out everything that changed underneath the commit.
+
+If all commits in _both_ versions of the branch were made with `jj`, the tool will skip `git range-diff` entirely, and it will use [JJ Change IDs](https://docs.jj-vcs.dev/latest/glossary/#change-id) to match up your commits, which takes out the guesswork of trying to figure out which commit is which in the old and new version of the branch.
+
+The GitHub Action will use a `jj` checkout of your repository by default, so that you get these benefits automatically. If it doesn't work properly for you for some reason, you can disable this behaviour by setting `no-jj` to `true` (but feel free to also report a bug):
+
+```yaml
+      - uses: svenvanheugten/gh-post-range-diff@v0.8.1
+        with:
+          no-jj: true
+```
+
+When running the tool locally, this behaviour will only be triggered if your checkout is already a (co-located) `jj` repository. To forcefully turn it off in that situation, pass in the `--no-jj` flag.
 
 ## Manual use
 
