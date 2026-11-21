@@ -14,15 +14,12 @@ module RangeDiff.Auto
   )
 where
 
-import Control.Exception (IOException, try)
 import Data.List (isPrefixOf)
 import Data.List.Extra (splitOn)
 import RangeDiff (Commit, Handle (..))
 import RangeDiff.CommitSha (CommitSha, shaText)
 import RangeDiff.Git qualified as Git
 import RangeDiff.Jj qualified as Jj
-import System.Exit (ExitCode (..))
-import System.Process (readProcessWithExitCode)
 
 -- | Range-diffs taken in the repo in @dir@, with jj as far as the commits and
 -- the machine allow it, and with git the rest of the way.
@@ -31,7 +28,7 @@ auto dir = Handle {rangeDiff = autoRangeDiff dir}
 
 autoRangeDiff :: FilePath -> CommitSha -> CommitSha -> CommitSha -> CommitSha -> IO [Commit]
 autoRangeDiff dir oldBase oldHead newBase newHead = do
-  installed <- jjInstalled
+  installed <- Jj.installed
   -- Without a jj, there is no point reading the change ids: there is nothing
   -- to read them with.
   byChangeIds <- if installed then allCarryChangeIds dir [(oldBase, oldHead), (newBase, newHead)] else pure False
@@ -63,11 +60,3 @@ allCarryChangeIds dir ranges = all carriesOne . records <$> raw
     -- header. Only the lines above the blank one are headers. The first line
     -- is the sha `rev-list` prints the object under, not part of the object.
     carriesOne = any ("change-id " `isPrefixOf`) . takeWhile (not . null) . drop 1 . lines
-
--- | Is there a jj to ask?
-jjInstalled :: IO Bool
-jjInstalled = do
-  attempt <- try (readProcessWithExitCode "jj" ["--version"] "")
-  pure $ case attempt of
-    Left (_ :: IOException) -> False
-    Right (code, _, _) -> code == ExitSuccess

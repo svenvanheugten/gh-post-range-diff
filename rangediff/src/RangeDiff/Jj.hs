@@ -18,10 +18,12 @@
 module RangeDiff.Jj
   ( jj,
     pairedByGit,
+    installed,
     colocated,
   )
 where
 
+import Control.Exception (IOException, try)
 import Control.Monad (unless, void)
 import Data.List (find, isPrefixOf)
 import Data.List.Extra (trim)
@@ -138,6 +140,14 @@ rewrite dir was now
     classify patch = Updated (interdiff DiffOfCommits patch)
 
 -- * Being somewhere jj can be asked
+
+-- | Is there a jj to ask?
+installed :: IO Bool
+installed = do
+  attempt <- try (readCreateProcessWithExitCode (proc "jj" ["--version"]) "")
+  pure $ case attempt of
+    Left (_ :: IOException) -> False
+    Right (code, _, _) -> code == ExitSuccess
 
 -- | Is the repo in @dir@ colocated: a jj repo and a git repo over the same
 -- working copy, which is what a repo somebody works in with jj looks like?
