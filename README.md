@@ -62,7 +62,7 @@ If all commits in _both_ versions of the branch were made with `jj`, the tool wi
 The GitHub Action will use a `jj` checkout of your repository by default, so that you get these benefits automatically. If it doesn't work properly for you for some reason, you can disable this behaviour by setting `no-jj` to `true` (but feel free to also report a bug):
 
 ```yaml
-      - uses: svenvanheugten/gh-post-range-diff@v0.8.0
+      - uses: svenvanheugten/gh-post-range-diff@v0.8.1
         with:
           no-jj: true
 ```
@@ -88,7 +88,7 @@ jobs:
   range-diff:
     runs-on: ubuntu-latest
     steps:
-      - uses: svenvanheugten/gh-post-range-diff@v0.8.0
+      - uses: svenvanheugten/gh-post-range-diff@v0.8.1
 ```
 
 This comments on every push, including ones that only add commits on top. To only comment on force-pushes, add `if: github.event.forced` to the job:
@@ -103,7 +103,7 @@ jobs:
 On a large Pull Request, most commits in the report tend to be unchanged. To leave those out, and _only_ say how many there were, set `hide-unchanged` to `true`:
 
 ```yaml
-      - uses: svenvanheugten/gh-post-range-diff@v0.8.0
+      - uses: svenvanheugten/gh-post-range-diff@v0.8.1
         with:
           hide-unchanged: true
 ```
