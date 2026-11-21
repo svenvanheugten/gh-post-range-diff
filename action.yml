@@ -20,25 +20,22 @@ runs:
       with:
         fetch-depth: 0
 
-    # The version this action installs.
-    - name: Resolve the version to install
+    # Build the tool from the source of this action, at whatever ref the
+    # workflow uses the action at, rather than installing a release: a
+    # workflow that points at a branch runs that branch. It is built the way
+    # the release workflow builds the binary it uploads.
+    - name: Build
+      id: build
       shell: bash
-      run: echo "VERSION=v0.8.1" >> "$GITHUB_ENV"
-
-    # We unfortunately can't pin the version to a specific SHA, since `gh extension install`
-    # doesn't accept commit SHA's for binary extensions: https://github.com/cli/cli/issues/10837.
-    #
-    # We'll do the next best thing, and verify that the release is immutable instead:
-    # https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/secure-your-dependencies/verifying-the-integrity-of-a-release#verifying-immutable-releases-and-local-artifacts
-    - name: Verify release is immutable
-      shell: bash
-      env:
-        GH_TOKEN: ${{ inputs.github-token }}
-      run: gh release verify "$VERSION" --repo "svenvanheugten/gh-post-range-diff"
+      working-directory: ${{ github.action_path }}
+      run: |
+        cabal update
+        cabal build
+        echo "bin=$(cabal list-bin exe:gh-post-range-diff)" >> "$GITHUB_OUTPUT"
 
     # With `jj` there, the report is worked out by the change ids jj writes on
     # its commits rather than by guessing which commit of the old branch is
-    # which commit of the new one; see "Better reports" in the README. Where a
+    # which commit of the new one; see "Sharper reports" in the README. Where a
     # branch carries no change ids, `git range-diff` does the guessing, but
     # each rewrite is still shown with `jj interdiff`, which leaves out what
     # only moved because the base branch did. Nothing has to be set up in the
@@ -72,23 +69,15 @@ runs:
         mv "$RUNNER_TEMP/jj/jj" "$HOME/.local/bin/jj"
         echo "$HOME/.local/bin" >> "$GITHUB_PATH"
 
-    # Install exactly the verified version.
-    - name: Install
-      shell: bash
-      env:
-        # `gh` downloads the extension through the GitHub API, which limits
-        # requests made without a token.
-        GH_TOKEN: ${{ inputs.github-token }}
-      run: |
-        gh extension install "svenvanheugten/gh-post-range-diff" \
-          --pin "$VERSION" --force
-
+    # Run the binary just built, as `gh post-range-diff` would run an
+    # installed one.
     - name: Run
       shell: bash
       env:
         GH_TOKEN: ${{ inputs.github-token }}
         HIDE_UNCHANGED: ${{ inputs.hide-unchanged }}
         NO_JJ: ${{ inputs.no-jj }}
+        GH_POST_RANGE_DIFF: ${{ steps.build.outputs.bin }}
       run: |
         flags=()
         case "$HIDE_UNCHANGED" in
@@ -102,7 +91,7 @@ runs:
           *) echo "no-jj must be true or false, not '$NO_JJ'." >&2; exit 1 ;;
         esac
 
-        gh post-range-diff "${flags[@]}" \
+        "$GH_POST_RANGE_DIFF" "${flags[@]}" \
           "${{ github.event.pull_request.number }}" \
           "${{ github.event.before }}" \
           "${{ github.event.after }}"
