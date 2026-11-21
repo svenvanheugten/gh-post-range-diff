@@ -50,7 +50,7 @@ cli github dir argv = case target of
       | not (all (`elem` ["--hide-unchanged", "--no-jj"]) flags) = Nothing
       | otherwise = case args of
           [pr] -> Just (pr, Nothing)
-          [pr, before, after] -> Just (pr, (,) <$> commitSha before <*> commitSha after)
+          [pr, before, after] -> (,) pr . Just <$> ((,) <$> commitSha before <*> commitSha after)
           _ -> Nothing
 
 -- Manual use: no SHAs on the command line, so derive them from the most recent

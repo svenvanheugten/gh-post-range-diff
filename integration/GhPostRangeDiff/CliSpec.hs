@@ -181,3 +181,11 @@ spec = inPullRequests $ do
   it "hands back its usage on a flag it doesn't know" $ \pr -> do
     cli pr ["--hide-unchanged-commits", number] `shouldReturn` Left usage
     comments pr `shouldReturn` []
+
+  it "hands back its usage on a before or after that isn't a sha" $ \pr -> do
+    (g, _) <- gadget pr
+    (w, w1) <- widget pr g
+    _ <- rework pr w 2
+    cli pr [number, "not-a-sha", shaText w1] `shouldReturn` Left usage
+    cli pr [number, shaText w1, "not-a-sha"] `shouldReturn` Left usage
+    comments pr `shouldReturn` []
