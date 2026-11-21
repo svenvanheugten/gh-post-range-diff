@@ -3,7 +3,6 @@
 -- terminal runs it on the last force-push.
 module GhPostRangeDiff.CliSpec (spec) where
 
-import Control.Exception (ErrorCall (..))
 import Control.Monad (void)
 import GhPostRangeDiff.Git (abbrev)
 import GhPostRangeDiff.PullRequest (PullRequest, base, checkout, cli, comments, inPullRequests, number, push, repo, root)
@@ -56,8 +55,8 @@ report rd pr visibility old new = do
       ++ "\n"
       ++ format visibility commits
 
-usage :: Selector ErrorCall
-usage (ErrorCall m) = m == "usage: gh-post-range-diff [--hide-unchanged] [--no-jj] <pr> [<before-sha> <after-sha>]"
+usage :: String
+usage = "usage: gh-post-range-diff [--hide-unchanged] [--no-jj] <pr> [<before-sha> <after-sha>]"
 
 spec :: Spec
 spec = inPullRequests $ do
@@ -66,14 +65,14 @@ spec = inPullRequests $ do
       (g, _) <- gadget pr
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
-      cli pr [number, shaText w1, shaText w2] `shouldReturn` Nothing
+      cli pr [number, shaText w1, shaText w2] `shouldReturn` Right Nothing
       expected <- report auto pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
     it "posts the range-diff of a push that only added commits" $ \pr -> do
       (g, g1) <- gadget pr
       (_, w1) <- widget pr g
-      cli pr [number, shaText g1, shaText w1] `shouldReturn` Nothing
+      cli pr [number, shaText g1, shaText w1] `shouldReturn` Right Nothing
       expected <- report auto pr ShowUnchanged g1 w1
       comments pr `shouldReturn` [expected]
 
@@ -82,8 +81,8 @@ spec = inPullRequests $ do
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
       let args = [number, shaText w1, shaText w2]
-      cli pr args `shouldReturn` Nothing
-      cli pr args `shouldReturn` Just ("Already reported on " ++ abbrev w1 ++ ".." ++ abbrev w2 ++ ". Nothing to do.")
+      cli pr args `shouldReturn` Right Nothing
+      cli pr args `shouldReturn` Right (Just ("Already reported on " ++ abbrev w1 ++ ".." ++ abbrev w2 ++ ". Nothing to do."))
       expected <- report auto pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
@@ -91,7 +90,7 @@ spec = inPullRequests $ do
       (g, _) <- gadget pr
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
-      cli pr ["--hide-unchanged", number, shaText w1, shaText w2] `shouldReturn` Nothing
+      cli pr ["--hide-unchanged", number, shaText w1, shaText w2] `shouldReturn` Right Nothing
       expected <- report auto pr HideUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
@@ -99,7 +98,7 @@ spec = inPullRequests $ do
       (g, _) <- gadget pr
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
-      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (cli pr [number, shaText w1, shaText w2]) `shouldReturn` Nothing
+      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (cli pr [number, shaText w1, shaText w2]) `shouldReturn` Right Nothing
       expected <- report RangeDiff.Jj.jj pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
@@ -108,7 +107,7 @@ spec = inPullRequests $ do
       (g, _) <- gadget pr
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
-      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (cli pr [number, shaText w1, shaText w2]) `shouldReturn` Nothing
+      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (cli pr [number, shaText w1, shaText w2]) `shouldReturn` Right Nothing
       expected <- report RangeDiff.Jj.jj pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
@@ -116,7 +115,7 @@ spec = inPullRequests $ do
       (g, _) <- gadget pr
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
-      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (cli pr ["--no-jj", number, shaText w1, shaText w2]) `shouldReturn` Nothing
+      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (cli pr ["--no-jj", number, shaText w1, shaText w2]) `shouldReturn` Right Nothing
       expected <- report RangeDiff.Git.git pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
       RangeDiff.Jj.colocated (checkout pr) `shouldReturn` False
@@ -125,7 +124,7 @@ spec = inPullRequests $ do
       (g, _) <- gadget pr
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
-      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (Repo.withoutJj (cli pr [number, shaText w1, shaText w2])) `shouldReturn` Nothing
+      Repo.withEnvironment [("GITHUB_ACTIONS", Just "true")] (Repo.withoutJj (cli pr [number, shaText w1, shaText w2])) `shouldReturn` Right Nothing
       expected <- report RangeDiff.Git.git pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
@@ -137,7 +136,7 @@ spec = inPullRequests $ do
       pull
       w2 <- rework pr w 2
       pull
-      cli pr [number, shaText w1, shaText w2] `shouldReturn` Nothing
+      cli pr [number, shaText w1, shaText w2] `shouldReturn` Right Nothing
       expected <- report RangeDiff.Jj.jj pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
       readProcess "git" ["-C", checkout pr, "for-each-ref", "refs/rd"] "" `shouldReturn` ""
@@ -146,7 +145,7 @@ spec = inPullRequests $ do
       (g, _) <- gadget pr
       (w, w1) <- widget pr g
       w2 <- rework pr w 2
-      cli pr [number, shaText w1, shaText w2] `shouldReturn` Nothing
+      cli pr [number, shaText w1, shaText w2] `shouldReturn` Right Nothing
       expected <- report RangeDiff.Git.git pr ShowUnchanged w1 w2
       comments pr `shouldReturn` [expected]
 
@@ -156,14 +155,14 @@ spec = inPullRequests $ do
       (w, _) <- widget pr g
       w2 <- rework pr w 2
       w3 <- rework pr w 3
-      cli pr [number] `shouldReturn` Nothing
+      cli pr [number] `shouldReturn` Right Nothing
       expected <- report auto pr ShowUnchanged w2 w3
       comments pr `shouldReturn` [expected]
 
     it "says so where nothing was force-pushed" $ \pr -> do
       (g, _) <- gadget pr
       _ <- widget pr g
-      cli pr [number] `shouldReturn` Just "No force-push events on this PR. Nothing to diff."
+      cli pr [number] `shouldReturn` Right (Just "No force-push events on this PR. Nothing to diff.")
       comments pr `shouldReturn` []
 
     it "leaves the unchanged commits out with --hide-unchanged after the number" $ \pr -> do
@@ -171,14 +170,14 @@ spec = inPullRequests $ do
       (w, _) <- widget pr g
       w2 <- rework pr w 2
       w3 <- rework pr w 3
-      cli pr [number, "--hide-unchanged"] `shouldReturn` Nothing
+      cli pr [number, "--hide-unchanged"] `shouldReturn` Right Nothing
       expected <- report auto pr HideUnchanged w2 w3
       comments pr `shouldReturn` [expected]
 
-  it "fails on arguments it can't make out" $ \pr -> do
-    cli pr [] `shouldThrow` usage
+  it "hands back its usage on arguments it can't make out" $ \pr -> do
+    cli pr [] `shouldReturn` Left usage
     comments pr `shouldReturn` []
 
-  it "fails on a flag it doesn't know" $ \pr -> do
-    cli pr ["--hide-unchanged-commits", number] `shouldThrow` usage
+  it "hands back its usage on a flag it doesn't know" $ \pr -> do
+    cli pr ["--hide-unchanged-commits", number] `shouldReturn` Left usage
     comments pr `shouldReturn` []

@@ -76,7 +76,7 @@ push pr c = do
   pure s
 
 -- | Run the CLI in the checkout, on @args@.
-cli :: PullRequest -> [String] -> IO (Maybe String)
+cli :: PullRequest -> [String] -> IO (Either String (Maybe String))
 cli pr = Cli.cli (const (FakeGitHub.handle (prFake pr))) (checkout pr)
 
 -- | The comments on the pull request, oldest first.
