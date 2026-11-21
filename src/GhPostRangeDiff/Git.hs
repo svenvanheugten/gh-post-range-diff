@@ -1,17 +1,17 @@
 -- | The repo the tool takes its range-diffs in, behind a handle, so that it can
--- be mocked in the tests. The one implementation that talks to a real repo is
--- 'git', which is that repo's directory and the `git` invocations it takes to
--- read it.
+-- be mocked in the tests. The implementations that talk to a real repo are
+-- 'git' and 'noFetching', which are that repo's directory and the `git`
+-- invocations it takes to read it.
 module GhPostRangeDiff.Git
   ( abbrev,
     Handle (..),
     git,
+    noFetching,
   )
 where
 
 import Data.List.Extra (trim)
 import RangeDiff.CommitSha (CommitSha, knownSha, shaText)
-import RangeDiff.Jj (colocated)
 import System.Exit (ExitCode (..))
 import System.Process (callProcess, readProcess, readProcessWithExitCode)
 
@@ -32,13 +32,22 @@ data Handle = Handle
     mergeBase :: CommitSha -> CommitSha -> IO CommitSha
   }
 
--- | The repo in @dir@, as the `git` CLI reaches it.
+-- | The repo in @dir@, as the `git` CLI reaches it, fetching into it whatever
+-- it is missing.
 git :: FilePath -> Handle
 git dir =
   Handle
     { fetch = gitFetch dir,
       isAncestorOf = gitIsAncestorOf dir,
       mergeBase = gitMergeBase dir
+    }
+
+-- | The repo in @dir@, as the `git` CLI reaches it, taking it to hold every
+-- commit there is to ask about already, so that nothing is fetched into it.
+noFetching :: FilePath -> Handle
+noFetching dir =
+  (git dir)
+    { fetch = \base _ -> revParse dir ("refs/remotes/origin/" ++ base)
     }
 
 -- Run a git command in the repo in @dir@, and hand back what it printed on
@@ -54,24 +63,14 @@ at dir args = "-C" : dir : args
 -- Make sure the repo has both versions of the branch, and read back where the
 -- base branch ended up.
 --
--- A colocated repo -- one somebody works in with jj -- is left alone. It is
--- their own repo, and it already holds every commit there is to ask about:
--- they pushed both versions of the branch from it. So there is nothing to
--- bring in, and fetching would only mean leaving a ref of ours behind in
--- somebody's repo.
---
 -- refs/rd/base is a scratch ref holding the fetched branch tip. We need it
 -- because without a destination the tip only lands in FETCH_HEAD, which this
 -- same fetch also fills with every commit asked for, so we couldn't pick the
 -- tip back out to rev-parse afterwards.
 gitFetch :: FilePath -> String -> [CommitSha] -> IO CommitSha
 gitFetch dir base commits = do
-  theirs <- colocated dir
-  if theirs
-    then revParse dir ("refs/remotes/origin/" ++ base)
-    else do
-      callProcess "git" (at dir (["fetch", "--quiet", "origin", base ++ ":refs/rd/base"] ++ map shaText commits))
-      revParse dir "refs/rd/base"
+  callProcess "git" (at dir (["fetch", "--quiet", "origin", base ++ ":refs/rd/base"] ++ map shaText commits))
+  revParse dir "refs/rd/base"
 
 gitIsAncestorOf :: FilePath -> CommitSha -> CommitSha -> IO Bool
 gitIsAncestorOf dir a b = do
